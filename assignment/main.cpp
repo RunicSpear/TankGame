@@ -41,33 +41,52 @@ int screenHeight   	        = 1080;
 
 
 // Global Variables
+
+//Environment Variables
 float specularPower = 10.0;
+float g = 9.81;
+
+//Coin Variables
 float coinRotationAngle = 0.0f;
 float coinBounce = 0.0f;
+
+//Maze Variables
 int currentLevel = 1;
 const int MAZE_WIDTH = 15;
 const int MAZE_HEIGHT = 15;
 float centerX = (MAZE_WIDTH - 3) * 2.0f / 2;
 float centerZ = (MAZE_HEIGHT - 1) * 2.0f / 2;
 int MAZE[MAZE_HEIGHT][MAZE_WIDTH]; 
+
+
+//Tank Variables
 float tankX = 0.0f;
 float tankZ = 0.0f;
 float tankRotation = 0.0f;
 float moveSpeed = 0.1f;
 float rotationSpeed = 1.0f;
-float g = 9.81;
+Vector3f tankPosition(centerX, 0.0f, centerZ);
+Vector3f tankVelocity(0.0f, 0.0f, 0.0f);
 
+//Movement Variables
+float maxSpeed = 3.0f;
+float acceleration = 3.0f;
+float friction = 3.0f;
+
+
+//Jumping Variables
 bool isJumping = false;
 float jumpHeight = 0.0f;
 float maxJumpHeight = 1.0f; //1 block high
 float jumpSpeed = 0.1f;
 bool maxJump = false;
 
+//Camera Variables
+float cameraDistance = 8.0f;
+float cameraHeight = 8.0f;
+
 //Timer Variables
 float remainingTime = 200.0f;
-
-Vector3f tankPosition(centerX, 0.0f, centerZ);
-Vector3f tankVelocity(0.0f, 0.0f, 0.0f);
 
 
 GLuint shaderProgramID;
@@ -104,8 +123,8 @@ GLuint coinTexture;
 GLuint tankTexture;
 
 
+//Component Meshes
 
-//Mesh
 Mesh crateMesh;			// Crate Mesh		                     
 Mesh coinMesh;			// Coin Mesh
 
@@ -115,10 +134,9 @@ Mesh turretMesh;		// Turret Mesh
 Mesh frontWheelMesh;		// Front Wheel Mesh
 Mesh backWheelMesh;		// Back Wheel Mesh
 
+//Ball Mesh
 
-float maxSpeed = 1.0f;
-float acceleration = 3.0f;
-float friction = 3.0f;
+
 
 
 //! Array of key states
@@ -219,7 +237,7 @@ int main(int argc, char** argv)
 	initTexture("../models/coin.bmp", coinTexture);
 	
 	//Tank
-	chassisMesh.loadOBJ("../models/pikachu.obj");
+	chassisMesh.loadOBJ("../models/chassis.obj");
 	turretMesh.loadOBJ("../models/turret.obj");
 	frontWheelMesh.loadOBJ("../models/front_wheel.obj");
 	backWheelMesh.loadOBJ("../models/back_wheel.obj");
@@ -332,7 +350,23 @@ void initTexture(std::string filename, GLuint & textureID)
 }
 
 
-
+/*void updateCamera() {
+	//Define the offset behind the tank
+	float distance = 5.0f;
+	float height = 2.0f;
+	
+	float rad = tankYaw * (M_PI / 180.0f);
+	
+	//Calculate camera position using trigonometry
+	float camX = tankX - distance * sin(rad);
+	float camZ = tankZ - distance * cos(rad);
+	float camY = tankY + height;
+	
+	// Set View matrix
+	gluLookAt(camX, camY, camZ,
+		  tankX, tankY, tankZ,
+		  0.0f, 1.0f, 0.0f);
+}	*/
 
 //! Display Loop
 void display(void)
@@ -347,10 +381,17 @@ void display(void)
 	// Clear the screen
 	glClearColor(0.2f, 0.3f, 0.6f, 1.0f);
 	glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
+	
+	//Update camera before rendering
+	//updateCamera();
 
 
 	//Use shader
 	glUseProgram(shaderProgramID);
+	
+	//Update the camera before rendering
+	//cameraManip.setFocus(tankPosition + Vector3f(0.0f, cameraHeight, 0.0f));
+   	//cameraManip.setPanTiltRadius(0.0f, 30.0f, cameraDistance);
 
 	//Projection Matrix - Perspective Projection
 	ProjectionMatrix.perspective(90, 1.0, 0.0001, 100.0);
@@ -389,7 +430,8 @@ void display(void)
 	glLoadIdentity();
 	
 	// Render remaining time on the screen
-	std::string timeText = "Time: " + std::to_string(remainingTime);
+	int printTime = remainingTime;
+	std::string timeText = "Time: " + std::to_string(printTime) + "s";
 	render2dText(timeText, 1.0f, 1.0f, 1.0f, screenWidth / 2.0f - 55.0f, screenHeight - 30.0f);
 	
 	//Render Text
@@ -481,7 +523,7 @@ void DrawTank(float x, float y, float z) {
 	
 	m.translate(tankPosition.x, y + jumpHeight, tankPosition.z);
 	m.rotate(tankRotation, 0.0f, 1.0f, 0.0f);
-	m.scale(0.1f, 0.1f, 0.1f); 
+	m.scale(0.3f, 0.3f, 0.3f); 
 	
 
 	//Bind the tank 
@@ -512,6 +554,11 @@ void DrawTank(float x, float y, float z) {
 	glUniformMatrix4fv(MVMatrixUniformLocation, 1, false, backWheelMatrix.getPtr());
 	backWheelMesh.Draw(vertexPositionAttribute, vertexNormalAttribute, vertexTexcoordAttribute);
 }
+
+//void updateTankMovement() {
+	
+	
+	
 
 
 
@@ -551,13 +598,12 @@ void keyUp(unsigned char key, int x, int y)
 //! Handle Keys
 void handleKeys()
 {
-
+	
 	float deltaTime = 0.016f;
 
 	float radians = tankRotation * M_PI / 180.0f;
 	Vector3f direction(sin(radians), 0.0f, cos(radians));
-	
-	 
+ 
 	//keys should be handled here
 	if(keyStates['w'])
     	{
@@ -571,7 +617,7 @@ void handleKeys()
     	
     	if (!keyStates['w'] && !keyStates['s'])
     	{
-    		tankVelocity = tankVelocity - tankVelocity * friction * deltaTime;
+    		tankVelocity = tankVelocity - tankVelocity * 2.0f * friction * deltaTime;
 	}
 	
 	if (tankVelocity.length() > maxSpeed)
@@ -587,11 +633,13 @@ void handleKeys()
     	if(keyStates['a'])
     	{
     		tankRotation += rotationSpeed;
+
     	}
     	
     	if(keyStates['d'])
     	{
     		tankRotation -= rotationSpeed;
+    		tankVelocity = tankVelocity - direction * -1.0f * acceleration * deltaTime;
     	}  
     	
     	
@@ -609,11 +657,20 @@ void handleKeys()
     		} else {
     			isJumping = false;	
  		}
- 	}		
+ 	}	
+ 	
+ 	/*float cameraX = tankPosition.x - cameraDistance * sin(radians);
+ 	float cameraZ = tankPosition.z - cameraDistance * cos(radians);
+ 	float cameraY = tankPosition.y + cameraHeight;
+ 	
+ 	// Calculate camera Position
+ 	//float radians = tankRotation * M_PI / 180.0f;
+ 	cameraManip.setPanTiltRadius(tankRotation + 180.0f, 30.0f, cameraDistance);
+ 	cameraManip.setFocus(tankPosition + Vector3f(0.0f, cameraHeight, 0.0f));	
    
-	cameraManip.setFocus(tankPosition);
+	//cameraManip.setFocus(tankPosition);
 	//cameraManip.setPanTiltRadius(tankRotation, 30.0f, 20.0f);
-	
+	*/
 }
 
 
@@ -641,11 +698,13 @@ void specialKeyUp(int key, int x, int y)
 	keyStates[key] = false;	
 }
 
+	  
+
 //! Timer Function
 void Timer(int value)
 {
 
-	remainingTime -= 0.01f;	
+	remainingTime -= 0.03f;	
 	
 	//Check if the time is up
 	if (remainingTime < 0)
@@ -659,7 +718,7 @@ void Timer(int value)
 	//}	
 		
 	// Update the coin rotation and bounce
-	coinRotationAngle += 1.0f;
+	coinRotationAngle += 2.0f;
 	
 	if(coinRotationAngle >= 360.0f)
 	{
@@ -685,5 +744,3 @@ void render2dText(std::string text, float r, float g, float b, float x, float y)
 		glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, text[i]);
 	}
 }	
-
-
