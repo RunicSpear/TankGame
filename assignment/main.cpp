@@ -33,7 +33,7 @@ void loadMaze(const std::string& filename, int level);
 void DrawMaze();
 void DrawTank(float x, float y, float z);
 void render2dText(std::string text, float r, float g, float b, float x, float y);
-		
+void updateTankMovement(Vector3f &tankVelocity, float &tankAngle);		
 				     
 // Screen size
 int screenWidth   	        = 1080;
@@ -63,15 +63,18 @@ int MAZE[MAZE_HEIGHT][MAZE_WIDTH];
 float tankX = 0.0f;
 float tankZ = 0.0f;
 float tankRotation = 0.0f;
-float moveSpeed = 0.1f;
-float rotationSpeed = 1.0f;
+float moveSpeed = 0.5f;
+float rotationSpeed = 3.0f;
 Vector3f tankPosition(centerX, 0.0f, centerZ);
 Vector3f tankVelocity(0.0f, 0.0f, 0.0f);
 
 //Movement Variables
-float maxSpeed = 3.0f;
-float acceleration = 3.0f;
+float maxSpeed = 10.0f;
+float acceleration = 10.0f;
 float friction = 3.0f;
+float moveDirection = 0.0f;
+float turnDirection = 0.0f;
+float deltaTime = 0.016f;
 
 
 //Jumping Variables
@@ -325,8 +328,6 @@ void initShader()
 
 void initTexture(std::string filename, GLuint & textureID)
 {
-
-	
 	//Generate texture and bind
 	glGenTextures(1, &textureID);
 	glBindTexture(GL_TEXTURE_2D, textureID);
@@ -349,25 +350,6 @@ void initTexture(std::string filename, GLuint & textureID)
 	delete[] data;
 }
 
-
-/*void updateCamera() {
-	//Define the offset behind the tank
-	float distance = 5.0f;
-	float height = 2.0f;
-	
-	float rad = tankYaw * (M_PI / 180.0f);
-	
-	//Calculate camera position using trigonometry
-	float camX = tankX - distance * sin(rad);
-	float camZ = tankZ - distance * cos(rad);
-	float camY = tankY + height;
-	
-	// Set View matrix
-	gluLookAt(camX, camY, camZ,
-		  tankX, tankY, tankZ,
-		  0.0f, 1.0f, 0.0f);
-}	*/
-
 //! Display Loop
 void display(void)
 {
@@ -381,17 +363,9 @@ void display(void)
 	// Clear the screen
 	glClearColor(0.2f, 0.3f, 0.6f, 1.0f);
 	glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
-	
-	//Update camera before rendering
-	//updateCamera();
-
 
 	//Use shader
 	glUseProgram(shaderProgramID);
-	
-	//Update the camera before rendering
-	//cameraManip.setFocus(tankPosition + Vector3f(0.0f, cameraHeight, 0.0f));
-   	//cameraManip.setPanTiltRadius(0.0f, 30.0f, cameraDistance);
 
 	//Projection Matrix - Perspective Projection
 	ProjectionMatrix.perspective(90, 1.0, 0.0001, 100.0);
@@ -555,12 +529,26 @@ void DrawTank(float x, float y, float z) {
 	backWheelMesh.Draw(vertexPositionAttribute, vertexNormalAttribute, vertexTexcoordAttribute);
 }
 
-//void updateTankMovement() {
-	
-	
-	
+void updateTankMovement(Vector3f &tankVelocity, float &tankAngle) 
+{
+		// Apply Turning
+		tankRotation = tankRotation + turnDirection * rotationSpeed;
 
-
+		// Convert rotation to direction
+		float rad = tankRotation * (M_PI / 180.0f);
+		Vector3f forward(sin(rad), 0.0f, cos(rad));
+	
+		// Update velocity
+		tankVelocity = forward * (moveSpeed * moveDirection);
+	
+		// Apply Friction if no input
+		if (moveDirection == 0.0f) {
+			tankVelocity = tankVelocity * 0.9f;
+		}
+	
+		// Update tank Position
+		tankPosition = tankPosition + tankVelocity * deltaTime; 
+}	
 
 
 //! Keyboard Interaction
@@ -598,28 +586,17 @@ void keyUp(unsigned char key, int x, int y)
 //! Handle Keys
 void handleKeys()
 {
-	
-	float deltaTime = 0.016f;
 
-	float radians = tankRotation * M_PI / 180.0f;
-	Vector3f direction(sin(radians), 0.0f, cos(radians));
- 
-	//keys should be handled here
 	if(keyStates['w'])
     	{
-        	tankVelocity = tankVelocity + direction * acceleration * deltaTime;
-    	}
+			moveDirection = 5.0f;
+    	} else if(keyStates['s']) {
+			moveDirection = -5.0f;
+    	} else {
+			moveDirection = 0.0f;
+		}
     	
-    	if(keyStates['s'])
-    	{
-        	tankVelocity = tankVelocity - direction * acceleration * deltaTime;
-    	}
-    	
-    	if (!keyStates['w'] && !keyStates['s'])
-    	{
-    		tankVelocity = tankVelocity - tankVelocity * 2.0f * friction * deltaTime;
-	}
-	
+
 	if (tankVelocity.length() > maxSpeed)
 	{
 		tankVelocity = tankVelocity - tankVelocity * friction * deltaTime;
@@ -632,15 +609,12 @@ void handleKeys()
 
     	if(keyStates['a'])
     	{
-    		tankRotation += rotationSpeed;
-
-    	}
-    	
-    	if(keyStates['d'])
-    	{
-    		tankRotation -= rotationSpeed;
-    		tankVelocity = tankVelocity - direction * -1.0f * acceleration * deltaTime;
-    	}  
+    		turnDirection = 1.0f;
+    	} else if(keyStates['d']) {
+    		turnDirection = -1.0f;
+    	} else {
+			turnDirection = 0.0f;
+		}
     	
     	
     	if (keyStates[' '])
@@ -657,20 +631,11 @@ void handleKeys()
     		} else {
     			isJumping = false;	
  		}
- 	}	
- 	
- 	/*float cameraX = tankPosition.x - cameraDistance * sin(radians);
- 	float cameraZ = tankPosition.z - cameraDistance * cos(radians);
- 	float cameraY = tankPosition.y + cameraHeight;
- 	
- 	// Calculate camera Position
- 	//float radians = tankRotation * M_PI / 180.0f;
- 	cameraManip.setPanTiltRadius(tankRotation + 180.0f, 30.0f, cameraDistance);
- 	cameraManip.setFocus(tankPosition + Vector3f(0.0f, cameraHeight, 0.0f));	
-   
-	//cameraManip.setFocus(tankPosition);
-	//cameraManip.setPanTiltRadius(tankRotation, 30.0f, 20.0f);
-	*/
+ 	}
+	
+	updateTankMovement(tankVelocity, tankRotation);
+
+	cameraManip.setFocus(tankPosition);
 }
 
 
