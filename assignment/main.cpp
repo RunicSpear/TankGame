@@ -49,6 +49,7 @@ float g = 9.81;
 //Coin Variables
 float coinRotationAngle = 0.0f;
 float coinBounce = 0.0f;
+int coinsCollected = 0;
 
 //Maze Variables
 int currentLevel = 1;
@@ -63,8 +64,8 @@ int MAZE[MAZE_HEIGHT][MAZE_WIDTH];
 float tankX = 0.0f;
 float tankZ = 0.0f;
 float tankRotation = 0.0f;
-float moveSpeed = 0.5f;
-float rotationSpeed = 3.0f;
+float moveSpeed = 1.0f;
+float rotationSpeed = 1.0f;
 Vector3f tankPosition(centerX, 0.0f, centerZ);
 Vector3f tankVelocity(0.0f, 0.0f, 0.0f);
 
@@ -386,6 +387,17 @@ void display(void)
 	DrawMaze();
 	
 	DrawTank(0.0f, 0.65f, 0.0f);
+
+	int tankTileX = (int)((tankPosition.x + 1.0f) / 2.0f);
+	int tankTileZ = (int)((tankPosition.z + 1.0f) / 2.0f);
+	if (tankTileZ >= 0 && tankTileX < MAZE_HEIGHT && tankTileX >= 0 && tankTileZ < MAZE_WIDTH) {
+		if (MAZE[tankTileX][tankTileZ] == 2) {
+			MAZE[tankTileX][tankTileZ] = 1; // Remove coin
+			coinsCollected++; // Increment counter
+			std::cout << "Coins collected: " << coinsCollected << std::endl;
+		}
+	}
+
 	
 	//Unuse Shader
 	glUseProgram(0);
@@ -589,9 +601,9 @@ void handleKeys()
 
 	if(keyStates['w'])
     	{
-			moveDirection = 5.0f;
+			moveDirection = 1.0f;
     	} else if(keyStates['s']) {
-			moveDirection = -5.0f;
+			moveDirection = -1.0f;
     	} else {
 			moveDirection = 0.0f;
 		}
