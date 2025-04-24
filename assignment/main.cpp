@@ -12,7 +12,6 @@
 #include <string>
 #include <fstream>
 
-
 // Function Prototypes
 bool initGL(int argc, char** argv);
 void initShader();
@@ -39,7 +38,6 @@ void updateTankMovement(Vector3f &tankVelocity, float &tankAngle);
 int screenWidth   	        = 1080;
 int screenHeight   	        = 1080;
 
-
 // Global Variables
 
 //Environment Variables
@@ -59,13 +57,15 @@ float centerX = (MAZE_WIDTH - 3) * 2.0f / 2;
 float centerZ = (MAZE_HEIGHT - 1) * 2.0f / 2;
 int MAZE[MAZE_HEIGHT][MAZE_WIDTH]; 
 
-
 //Tank Variables
 float tankX = 0.0f;
 float tankZ = 0.0f;
 float tankRotation = 0.0f;
 float moveSpeed = 1.0f;
 float rotationSpeed = 1.0f;
+float turretYaw = 0.0f;
+int lastMouseX = -1;
+bool rotatingTurret = false;
 Vector3f tankPosition(centerX, 0.0f, centerZ);
 Vector3f tankVelocity(0.0f, 0.0f, 0.0f);
 
@@ -76,7 +76,9 @@ float friction = 3.0f;
 float moveDirection = 0.0f;
 float turnDirection = 0.0f;
 float deltaTime = 0.016f;
-
+float wheelRotation = 0.0f;
+const float wheelRadius = 0.1f;
+float steeringAngle = 0.0f; 
 
 //Jumping Variables
 bool isJumping = false;
@@ -88,16 +90,15 @@ bool maxJump = false;
 //Camera Variables
 float cameraDistance = 8.0f;
 float cameraHeight = 8.0f;
+bool rotatingCamera = false;
 
 //Timer Variables
 float remainingTime = 200.0f;
-
 
 GLuint shaderProgramID;
 GLuint vertexPositionAttribute;		                       // Vertex Position Attribute Location
 GLuint vertexNormalAttribute;		
 GLuint vertexTexcoordAttribute;		                       // Vertex Texcoord Attribute Location
-
 
 //Material Properties
 GLuint LightPositionUniformLocation;                           // Light Position Uniform   
@@ -105,12 +106,10 @@ GLuint AmbientUniformLocation;
 GLuint SpecularUniformLocation;
 GLuint SpecularPowerUniformLocation;
 
-
 //Lighting
 Vector3f lightPosition = Vector3f(20.0,20.0,20.0);             
 Vector3f ambient    = Vector3f(0.1,0.1,0.1);
 Vector3f specular   = Vector3f(1.0,0.5,0.0);
-
 
 //Viewing
 SphericalCameraManipulator cameraManip;
@@ -118,7 +117,6 @@ Matrix4x4 ModelViewMatrix;		                     // ModelView Matrix
 GLuint MVMatrixUniformLocation;		                     // ModelView Matrix Uniform
 Matrix4x4 ProjectionMatrix;		                     // Projection Matrix
 GLuint ProjectionUniformLocation;	                     // Projection Matrix Uniform Location
-
 GLuint TextureMapUniformLocation;               	      // Texture Map Location
 
 //Gluint Textures
@@ -126,9 +124,7 @@ GLuint crateTexture;
 GLuint coinTexture;
 GLuint tankTexture;
 
-
 //Component Meshes
-
 Mesh crateMesh;			// Crate Mesh		                     
 Mesh coinMesh;			// Coin Mesh
 
@@ -145,8 +141,6 @@ Mesh backWheelMesh;		// Back Wheel Mesh
 
 //! Array of key states
 bool keyStates[256];
-
-	
 
 void loadMaze(const std::string& filename, int level)
 {	
@@ -168,8 +162,6 @@ void loadMaze(const std::string& filename, int level)
 	}
 	
 	
-	
-	
 	for (int i = 0; i < MAZE_HEIGHT; i++)
 	{
 		for (int j = 0; j < MAZE_WIDTH; j++)
@@ -177,7 +169,6 @@ void loadMaze(const std::string& filename, int level)
 			file >> MAZE[i][j];
 		}
 	}
-	
 	file.close();
 }
 
@@ -192,11 +183,11 @@ void switchLevel(int direction)
 		currentLevel = 1;
 	}
 	
+	coinsCollected = 0;
+
 	loadMaze("maze.txt", currentLevel);
 	std::cout << "Switched to level" << currentLevel << std::endl;
-}	
-			
-				
+}			
 
 void reshape(int width, int height)
 {
@@ -211,7 +202,6 @@ void reshape(int width, int height)
 	glUniformMatrix4fv(ProjectionUniformLocation, 1, false, ProjectionMatrix.getPtr());
 }	
 
-
 //! Main Program Entry
 int main(int argc, char** argv)
 {	
@@ -222,7 +212,6 @@ int main(int argc, char** argv)
 	//init OpenGL
 	if(!initGL(argc, argv))
 		return -1;
-		
 
 	//Init OpenGL Shader
 	initShader();
@@ -377,7 +366,6 @@ void display(void)
 		1,							//Number of Uniforms
 		false,						//Transpose Matrix
 		ProjectionMatrix.getPtr());	//Pointer to ModelViewMatrixValues
-
 	
 	glUniform3f(LightPositionUniformLocation, lightPosition.x,lightPosition.y,lightPosition.z);
 	glUniform4f(AmbientUniformLocation, ambient.x, ambient.y, ambient.z, 1.0);
@@ -398,7 +386,21 @@ void display(void)
 		}
 	}
 
-	
+	bool coinsRemaining = false;
+	for (int i = 0; i < MAZE_HEIGHT; ++i) {
+		for (int j = 0; j < MAZE_WIDTH; ++j) {
+			if (MAZE[i][j] == 2) {
+				coinsRemaining = true;
+				break;
+			}
+		}
+		if (coinsRemaining) break;
+	}
+
+	if (!coinsRemaining) {
+		switchLevel(1);
+	}
+
 	//Unuse Shader
 	glUseProgram(0);
 	glBindTexture(GL_TEXTURE_2D, 0);
@@ -421,9 +423,13 @@ void display(void)
 	render2dText(timeText, 1.0f, 1.0f, 1.0f, screenWidth / 2.0f - 55.0f, screenHeight - 30.0f);
 	
 	//Render Text
-	render2dText("Level: 1", 1.0f, 1.0f, 1.0f, 10.0f, screenHeight - 30.0f);
-	
-	
+	std::string levelText = "Level: " + std::to_string(currentLevel);
+	render2dText(levelText, 1.0f, 1.0f, 1.0f, 10.0f, screenHeight - 30.0f);
+
+	// Render coins collected on the screen
+	std::string coinsText = "Coins: " + std::to_string(coinsCollected);
+	render2dText(coinsText, 1.0f, 1.0f, 1.0f, 10.0f, screenHeight - 60.0f);
+ 	
 	glEnable(GL_DEPTH_TEST);
 	
         // Restore previous matrix state
@@ -432,17 +438,13 @@ void display(void)
         glMatrixMode(GL_MODELVIEW);	
         glPopMatrix();
 
-
 	//Redraw frame
 	glutPostRedisplay();
 	glutSwapBuffers();
 }
 
-
 void DrawMaze()
 {
-
-
 	for(int i=0; i<MAZE_HEIGHT; i++)
 	{
 	
@@ -479,8 +481,6 @@ void DrawMaze()
 				
 				Matrix4x4 m = cameraManip.apply(ModelViewMatrix);
 				
-			
-
 				//Set Colour after program is in use
 				glActiveTexture(GL_TEXTURE0);
 				glBindTexture(GL_TEXTURE_2D, coinTexture);
@@ -492,7 +492,6 @@ void DrawMaze()
 				m.rotate(coinRotationAngle, 0.0f, 1.0f, 0.0f);
 				glUniformMatrix4fv(MVMatrixUniformLocation, 1, false, m.getPtr());
 				coinMesh.Draw(vertexPositionAttribute, vertexNormalAttribute, vertexTexcoordAttribute);
-			
 			}
 
 		}
@@ -505,13 +504,10 @@ void DrawTank(float x, float y, float z) {
 	
 	Matrix4x4 m = cameraManip.apply(ModelViewMatrix);
 	
-	
-	
 	m.translate(tankPosition.x, y + jumpHeight, tankPosition.z);
 	m.rotate(tankRotation, 0.0f, 1.0f, 0.0f);
 	m.scale(0.3f, 0.3f, 0.3f); 
 	
-
 	//Bind the tank 
 	glActiveTexture(GL_TEXTURE0);
 	glBindTexture(GL_TEXTURE_2D, tankTexture);
@@ -525,17 +521,20 @@ void DrawTank(float x, float y, float z) {
 	// Draw Turret
 	Matrix4x4 turretMatrix = m;
 	turretMatrix.translate(0.0f, 0.0f, 0.0f);
+	turretMatrix.rotate(turretYaw, 0.0f, 1.0f, 0.0f);
 	glUniformMatrix4fv(MVMatrixUniformLocation, 1, false, turretMatrix.getPtr());
 	turretMesh.Draw(vertexPositionAttribute, vertexNormalAttribute, vertexTexcoordAttribute);
 	
 	// Draw Front Wheels
 	Matrix4x4 frontWheelMatrix = m;
 	frontWheelMatrix.translate(0.0f, 0.1f, 0.0f);
+	//frontWheelMatrix.rotate(wheelRotation, 1.0f, 0.0f, 0.0f); 
 	glUniformMatrix4fv(MVMatrixUniformLocation, 1, false, frontWheelMatrix.getPtr());
 	frontWheelMesh.Draw(vertexPositionAttribute, vertexNormalAttribute, vertexTexcoordAttribute);
 	
 	// Draw Back Wheels
 	Matrix4x4 backWheelMatrix = m;
+	//backWheelMatrix.rotate(wheelRotation, 1.0f, 0.0f, 0.0f);
 	backWheelMatrix.translate(0.0f, 0.0f, 0.0f);
 	glUniformMatrix4fv(MVMatrixUniformLocation, 1, false, backWheelMatrix.getPtr());
 	backWheelMesh.Draw(vertexPositionAttribute, vertexNormalAttribute, vertexTexcoordAttribute);
@@ -560,6 +559,10 @@ void updateTankMovement(Vector3f &tankVelocity, float &tankAngle)
 	
 		// Update tank Position
 		tankPosition = tankPosition + tankVelocity * deltaTime; 
+
+		// Calculate rotation amount
+		wheelRotation += (moveSpeed * deltaTime) / wheelRadius;
+
 }	
 
 
@@ -582,10 +585,8 @@ void keyboard(unsigned char key, int x, int y)
 		switchLevel(-1);
 	}	
 	
-
     //Set key status
     keyStates[key] = true;  
-  
 }
 
 //! Handle key up situation
@@ -594,11 +595,9 @@ void keyUp(unsigned char key, int x, int y)
     keyStates[key] = false;
 }
 
-
 //! Handle Keys
 void handleKeys()
 {
-
 	if(keyStates['w'])
     	{
 			moveDirection = 1.0f;
@@ -607,13 +606,11 @@ void handleKeys()
     	} else {
 			moveDirection = 0.0f;
 		}
-    	
 
 	if (tankVelocity.length() > maxSpeed)
 	{
 		tankVelocity = tankVelocity - tankVelocity * friction * deltaTime;
 	}	
-    	
     	
     	tankPosition.x += tankVelocity.x * deltaTime;
     	tankPosition.y += tankVelocity.y * deltaTime;
@@ -622,12 +619,11 @@ void handleKeys()
     	if(keyStates['a'])
     	{
     		turnDirection = 1.0f;
-    	} else if(keyStates['d']) {
+    	} else if (keyStates['d']) {
     		turnDirection = -1.0f;
     	} else {
 			turnDirection = 0.0f;
 		}
-    	
     	
     	if (keyStates[' '])
     	{
@@ -650,10 +646,26 @@ void handleKeys()
 	cameraManip.setFocus(tankPosition);
 }
 
-
 // Mouse Interaction
 void mouse(int button, int state, int x, int y)
 {
+	if (button == GLUT_LEFT_BUTTON) {
+		if (state == GLUT_UP) {
+			rotatingTurret = true;
+			lastMouseX = x;
+		} else if (state == GLUT_DOWN) {
+			rotatingTurret = false;
+		}
+	}
+
+	if (button == GLUT_RIGHT_BUTTON) {
+		if (state == GLUT_DOWN) {
+			rotatingCamera = true;
+		} else if (state == GLUT_UP) {
+			rotatingCamera = false;
+		}
+	}
+
     cameraManip.handleMouse(button, state,x,y);
     glutPostRedisplay(); 
 }
@@ -661,8 +673,24 @@ void mouse(int button, int state, int x, int y)
 // Mouse Interaction
 void motion(int x, int y)
 {
-    cameraManip.handleMouseMotion(x,y);
-    glutPostRedisplay(); 
+	if (rotatingTurret) {
+		int dx = x - lastMouseX;
+		turretYaw -= dx * 0.3f; //Adjust 0.3f for sensitivity
+		lastMouseX = x;
+
+		if (turretYaw > 360.0f) {
+			turretYaw -= 360.0f;
+		}
+		if (turretYaw < 0.0f) {
+			turretYaw += 360.0f;
+		}
+	}
+
+
+	if (rotatingCamera) {
+    	cameraManip.handleMouseMotion(x,y);
+    	glutPostRedisplay(); 
+	}
 }
 
 void specialKeyboard(int key, int x, int y) 
@@ -675,12 +703,9 @@ void specialKeyUp(int key, int x, int y)
 	keyStates[key] = false;	
 }
 
-	  
-
 //! Timer Function
 void Timer(int value)
 {
-
 	remainingTime -= 0.03f;	
 	
 	//Check if the time is up
@@ -688,21 +713,16 @@ void Timer(int value)
 	{
 		remainingTime = 0;
 	}
-	
-	//if (timeRemaining == 0)
-	//{
-	//	std:cout <<"Time's up!" << std::endl;
-	//}	
 		
 	// Update the coin rotation and bounce
 	coinRotationAngle += 2.0f;
 	
 	if(coinRotationAngle >= 360.0f)
 	{
-    		coinRotationAngle -= 360.0f;
-    	}
-    	
-    	coinBounce += 0.1f;
+    	coinRotationAngle -= 360.0f;
+    }
+    
+	coinBounce += 0.1f;
     
 	// Redisplay the scene    
 	glutPostRedisplay();
