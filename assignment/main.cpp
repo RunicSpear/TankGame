@@ -42,7 +42,7 @@ int screenHeight   	        = 1080;
 
 //Environment Variables
 float specularPower = 10.0;
-float g = 9.81;
+float g = -9.81;
 
 //Coin Variables
 float coinRotationAngle = 0.0f;
@@ -64,7 +64,9 @@ float tankRotation = 0.0f;
 float moveSpeed = 1.0f;
 float rotationSpeed = 1.0f;
 float turretYaw = 0.0f;
+float turretPitch = 0.0f;
 int lastMouseX = -1;
+int lastMouseY = -1;
 bool rotatingTurret = false;
 Vector3f tankPosition(centerX, 0.0f, centerZ);
 Vector3f tankVelocity(0.0f, 0.0f, 0.0f);
@@ -79,6 +81,10 @@ float deltaTime = 0.016f;
 float wheelRotation = 0.0f;
 const float wheelRadius = 0.1f;
 float steeringAngle = 0.0f; 
+float tankY = 0.0f;
+float verticalVelocity = 0.0f;
+bool isfalling = false;
+
 
 //Jumping Variables
 bool isJumping = false;
@@ -88,8 +94,8 @@ float jumpSpeed = 0.1f;
 bool maxJump = false;
 
 //Camera Variables
-float cameraDistance = 8.0f;
-float cameraHeight = 8.0f;
+float cameraDistance = 10.0f;
+float cameraHeight = 5.0f;
 bool rotatingCamera = false;
 
 //Timer Variables
@@ -372,6 +378,21 @@ void display(void)
 	glUniform4f(SpecularUniformLocation, specular.x, specular.y, specular.z, 1.0);
 	glUniform1f(SpecularPowerUniformLocation, specularPower);
 
+	float radians = tankRotation * (M_PI / 180.0f);
+	float camX = tankPosition.x - cameraDistance * sin(radians);
+	float camZ = tankPosition.z - cameraDistance * cos(radians);
+	float camY = tankPosition.y + cameraHeight;
+
+	//Apply the camera view using gluLookAt
+	glMatrixMode(GL_MODELVIEW);
+	glLoadIdentity();
+
+	gluLookAt(
+		camX, camY, camZ,
+		tankPosition.x, tankPosition.y, tankPosition.z,
+		0.0f, 1.0f, 0.0f
+	);
+
 	DrawMaze();
 	
 	DrawTank(0.0f, 0.65f, 0.0f);
@@ -432,11 +453,11 @@ void display(void)
  	
 	glEnable(GL_DEPTH_TEST);
 	
-        // Restore previous matrix state
-        glMatrixMode(GL_PROJECTION);
-        glPopMatrix();
-        glMatrixMode(GL_MODELVIEW);	
-        glPopMatrix();
+    // Restore previous matrix state
+    glMatrixMode(GL_PROJECTION);
+    glPopMatrix();
+    glMatrixMode(GL_MODELVIEW);	
+    glPopMatrix();
 
 	//Redraw frame
 	glutPostRedisplay();
@@ -504,7 +525,7 @@ void DrawTank(float x, float y, float z) {
 	
 	Matrix4x4 m = cameraManip.apply(ModelViewMatrix);
 	
-	m.translate(tankPosition.x, y + jumpHeight, tankPosition.z);
+	m.translate(tankPosition.x, tankY + jumpHeight + 1.0f, tankPosition.z);
 	m.rotate(tankRotation, 0.0f, 1.0f, 0.0f);
 	m.scale(0.3f, 0.3f, 0.3f); 
 	
@@ -522,6 +543,7 @@ void DrawTank(float x, float y, float z) {
 	Matrix4x4 turretMatrix = m;
 	turretMatrix.translate(0.0f, 0.0f, 0.0f);
 	turretMatrix.rotate(turretYaw, 0.0f, 1.0f, 0.0f);
+	turretMatrix.rotate(turretPitch, 1.0f, 0.0f, 0.0f);
 	glUniformMatrix4fv(MVMatrixUniformLocation, 1, false, turretMatrix.getPtr());
 	turretMesh.Draw(vertexPositionAttribute, vertexNormalAttribute, vertexTexcoordAttribute);
 	
@@ -565,6 +587,36 @@ void updateTankMovement(Vector3f &tankVelocity, float &tankAngle)
 
 }	
 
+void checkfall() {
+	// Convert tank world position to maze indices
+	int i = static_cast<int>(round(tankPosition.x / 2.0f));
+	int j = static_cast<int>(round(tankPosition.z / 2.0f));
+
+	bool onCrate = false;
+
+	if (i >= 0 && j >= 0 && i < MAZE_WIDTH && j < MAZE_HEIGHT) {
+		if (MAZE[i][j] >= 1) {
+			onCrate = true;
+		}
+	}
+
+	if (!onCrate) {
+		isfalling = true;
+	} else {
+		isfalling = false;
+		tankY = 0.0f;
+		verticalVelocity = 0.0f;
+	}
+
+
+	if (isfalling) {
+		verticalVelocity += g * 10.0f * deltaTime;
+		tankY = verticalVelocity * deltaTime;
+	}
+
+	
+}
+
 
 //! Keyboard Interaction
 void keyboard(unsigned char key, int x, int y)
@@ -598,6 +650,22 @@ void keyUp(unsigned char key, int x, int y)
 //! Handle Keys
 void handleKeys()
 {
+
+	if (isfalling){
+		moveDirection = 0.0f;
+		turnDirection = 0.0f;
+
+		checkfall();
+		updateTankMovement(tankVelocity, tankRotation);
+		return;
+	}
+
+	//if (remainingTime = 0){
+		//moveDirection = 0.0f;
+		//turnDirection = 0.0f;
+//
+		//return;
+	//}
 	if(keyStates['w'])
     	{
 			moveDirection = 1.0f;
@@ -643,7 +711,9 @@ void handleKeys()
 	
 	updateTankMovement(tankVelocity, tankRotation);
 
-	cameraManip.setFocus(tankPosition);
+	checkfall();
+
+	//setFocus(tankPosition);
 }
 
 // Mouse Interaction
@@ -670,28 +740,39 @@ void mouse(int button, int state, int x, int y)
     glutPostRedisplay(); 
 }
 
+
 // Mouse Interaction
 void motion(int x, int y)
 {
-	if (rotatingTurret) {
-		int dx = x - lastMouseX;
-		turretYaw -= dx * 0.3f; //Adjust 0.3f for sensitivity
-		lastMouseX = x;
+    if (rotatingTurret) {
+        // Get the change in mouse position
+        int dx = x - lastMouseX; // X-axis movement
+        int dz = y - lastMouseY; // Y-axis movement (will be treated like Z-axis control)
 
-		if (turretYaw > 360.0f) {
-			turretYaw -= 360.0f;
-		}
-		if (turretYaw < 0.0f) {
-			turretYaw += 360.0f;
-		}
-	}
+        // Adjust the yaw based on both the X and Z movements
+        turretYaw -= dx * 0.3f;  // Adjust sensitivity for X-axis (horizontal movement)
+        turretYaw -= dz * 0.3f;  // Adjust sensitivity for Z-axis (vertical movement)
 
+        // Wrap the yaw to ensure it stays within [0, 360] degrees
+        if (turretYaw > 360.0f) {
+            turretYaw -= 360.0f;
+        }
+        if (turretYaw < 0.0f) {
+            turretYaw += 360.0f;
+        }
 
-	if (rotatingCamera) {
-    	cameraManip.handleMouseMotion(x,y);
-    	glutPostRedisplay(); 
-	}
+        // Update the last mouse positions
+        lastMouseX = x;
+        lastMouseY = y;
+    }
+
+    if (rotatingCamera) {
+        cameraManip.handleMouseMotion(x, y);
+        glutPostRedisplay();
+    }
 }
+
+
 
 void specialKeyboard(int key, int x, int y) 
 {
