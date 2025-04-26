@@ -1,3 +1,7 @@
+/*=================================================================================================================================*/
+/*-------------------------------------------------------// Start //---------------------------------------------------------------*/
+/*=================================================================================================================================*/
+
 // Includes
 #include <GL/glew.h>
 #include <GL/glut.h>
@@ -12,7 +16,8 @@
 #include <string>
 #include <fstream>
 
-// Function Prototypes
+/*---------------------------------------------------// Function Prototypes //-----------------------------------------------------*/
+
 bool initGL(int argc, char** argv);
 void initShader();
 void initGeometry();  //Function to init Geometry 
@@ -34,12 +39,13 @@ void DrawTank(float x, float y, float z);
 void render2dText(std::string text, float r, float g, float b, float x, float y);
 void updateTankMovement(Vector3f &tankVelocity, float &tankAngle);	
 void updateCameraPosition();	
+void updateTurretRotation();
 				     
 // Screen size
 int screenWidth   	        = 1080;
 int screenHeight   	        = 1080;
 
-// Global Variables
+/*----------------------------------------------------// Global Variables //-------------------------------------------------------*/
 
 //Environment Variables
 float specularPower = 10.0;
@@ -62,12 +68,8 @@ int MAZE[MAZE_HEIGHT][MAZE_WIDTH];
 float tankX = 0.0f;
 float tankZ = 0.0f;
 float tankRotation = 0.0f;
-float moveSpeed = 1.0f;
+float moveSpeed = 2.0f;
 float rotationSpeed = 1.0f;
-float turretYaw = 0.0f;
-float turretPitch = 0.0f;
-int lastMouseX = -1;
-int lastMouseY = -1;
 bool rotatingTurret = false;
 Vector3f tankPosition(centerX, 0.0f, centerZ);
 Vector3f tankVelocity(0.0f, 0.0f, 0.0f);
@@ -86,7 +88,6 @@ float tankY = 0.0f;
 float verticalVelocity = 0.0f;
 bool isfalling = false;
 
-
 //Jumping Variables
 bool isJumping = false;
 float jumpHeight = 0.0f;
@@ -95,9 +96,21 @@ float jumpSpeed = 0.1f;
 bool maxJump = false;
 
 //Camera Variables
-float cameraDistance = 10.0f;
+float cameraDistance = 7.0f;
 float cameraHeight = 5.0f;
 bool rotatingCamera = false;
+float cameraPan = 0.0f;
+
+// Turret Controls
+float sensitivity = 50.0f;
+float turretYaw = 0.0f;
+float turretBaseRotation = 0.0f;
+float targetTurretRotation = 0.0f;
+int mouseX = screenWidth / 2;
+int mouseY = screenHeight / 2;
+int lastMouseX = screenWidth / 2;
+bool firstMouse = true;
+bool ignoreMouseMotion = false;
 
 //Timer Variables
 float remainingTime = 200.0f;
@@ -146,9 +159,10 @@ Mesh backWheelMesh;		// Back Wheel Mesh
 
 
 
-//! Array of key states
+// Array of key states
 bool keyStates[256];
 
+// Function to read through a text file to load the maze
 void loadMaze(const std::string& filename, int level)
 {	
 	std::ifstream file(filename);
@@ -179,6 +193,7 @@ void loadMaze(const std::string& filename, int level)
 	file.close();
 }
 
+/*------------------------------------------------------// Switching Levels Function //--------------------------------------------*/
 void switchLevel(int direction)
 {
 	currentLevel += direction;
@@ -209,7 +224,7 @@ void reshape(int width, int height)
 	glUniformMatrix4fv(ProjectionUniformLocation, 1, false, ProjectionMatrix.getPtr());
 }	
 
-//! Main Program Entry
+// Main Program Entry
 int main(int argc, char** argv)
 {	
 	
@@ -242,10 +257,6 @@ int main(int argc, char** argv)
 	frontWheelMesh.loadOBJ("../models/front_wheel.obj");
 	backWheelMesh.loadOBJ("../models/back_wheel.obj");
 	initTexture("../models/hamvee.bmp", tankTexture);
-
-	//Init Camera Manipultor
-	//cameraManip.setPanTiltRadius(0.0f, 0.0f,20.f);
-	//cameraManip.setFocus(Vector3f(MAZE_WIDTH, 0.0f, MAZE_HEIGHT));
 
 	//Start main loop
 	glutMainLoop();
@@ -302,10 +313,10 @@ bool initGL(int argc, char** argv)
 	return true;
 }
 
-//Init Shader
+// Init Shader
 void initShader()
 {
-	//Create shader
+	// Create shader
 	shaderProgramID = Shader::LoadFromFile("shader.vert","shader.frag");
 
 	// Get a handle for our vertex position buffer
@@ -313,7 +324,7 @@ void initShader()
 	vertexNormalAttribute = glGetAttribLocation(shaderProgramID,    "aVertexNormal");
 	vertexTexcoordAttribute = glGetAttribLocation(shaderProgramID, "aVertexTexcoord");
 
-	//!
+	//
 	MVMatrixUniformLocation         = glGetUniformLocation(shaderProgramID, "MVMatrix_uniform"); 
 	ProjectionUniformLocation       = glGetUniformLocation(shaderProgramID, "ProjMatrix_uniform"); 
 	LightPositionUniformLocation    = glGetUniformLocation(shaderProgramID, "LightPosition_uniform"); 
@@ -325,49 +336,49 @@ void initShader()
 
 void initTexture(std::string filename, GLuint & textureID)
 {
-	//Generate texture and bind
+	// Generate texture and bind
 	glGenTextures(1, &textureID);
 	glBindTexture(GL_TEXTURE_2D, textureID);
 
-	//Set texture parameters
+	// Set texture parameters
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR); 
 
 
-	//Get texture Data
+	// Get texture Data
 	int width, height;
 	char* data;
 	Texture::LoadBMP(filename, width, height, data);
 	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, data);
 	glBindTexture(GL_TEXTURE_2D, 0);
 
-	//Cleanup data - copied to GPU
+	// Cleanup data - copied to GPU
 	delete[] data;
 }
 
-//! Display Loop
+/*-----------------------------------------------// Display Loop //----------------------------------------------------------------*/
 void display(void)
 {
 	
-	//Handle keys
+	// Handle keys
 	handleKeys();
 
-	//Set Viewport
+	// Set Viewport
 	glViewport(0,0,screenWidth, screenHeight);
 
 	// Clear the screen
 	glClearColor(0.2f, 0.3f, 0.6f, 1.0f);
 	glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
 
-	//Use shader
+	// Use shader
 	glUseProgram(shaderProgramID);
 
-	//Projection Matrix - Perspective Projection
+	// Projection Matrix - Perspective Projection
 	ProjectionMatrix.perspective(90, 1.0, 0.0001, 100.0);
 
-	//Set Projection Matrix
+	// Set Projection Matrix
 	glUniformMatrix4fv(	
 		ProjectionUniformLocation,  //Uniform location
 		1,							//Number of Uniforms
@@ -379,29 +390,18 @@ void display(void)
 	glUniform4f(SpecularUniformLocation, specular.x, specular.y, specular.z, 1.0);
 	glUniform1f(SpecularPowerUniformLocation, specularPower);
 
-	//float radians = atan2(tankVelocity.z, tankVelocity.x);
-	//float tankRotation = radians * (180.0f / M_PI);
-	//float camX = tankPosition.x - cameraDistance * sin(radians);
-	//float camZ = tankPosition.z - cameraDistance * cos(radians);
-	//float camY = tankPosition.y + cameraHeight;
-
-	
 	//Apply the camera view using gluLookAt
 	glMatrixMode(GL_MODELVIEW);
 	glLoadIdentity();
 
-	//gluLookAt(
-		//camX, camY, camZ,
-		//tankPosition.x, tankPosition.y, tankPosition.z,
-		//0.0f, 1.0f, 0.0f
-	//);
-
 	DrawMaze();
-	
+
 	DrawTank(0.0f, 0.65f, 0.0f);
 
+	updateTurretRotation();
 	updateCameraPosition();
 
+	// Collecting coins
 	int tankTileX = (int)((tankPosition.x + 1.0f) / 2.0f);
 	int tankTileZ = (int)((tankPosition.z + 1.0f) / 2.0f);
 	if (tankTileZ >= 0 && tankTileX < MAZE_HEIGHT && tankTileX >= 0 && tankTileZ < MAZE_WIDTH) {
@@ -427,7 +427,7 @@ void display(void)
 		switchLevel(1);
 	}
 
-	//Unuse Shader
+	// Unuse Shader
 	glUseProgram(0);
 	glBindTexture(GL_TEXTURE_2D, 0);
 	glDisable(GL_DEPTH_TEST);
@@ -442,13 +442,15 @@ void display(void)
 	glMatrixMode(GL_MODELVIEW);
 	glPushMatrix();
 	glLoadIdentity();
+
+	/*---------------------------------------------// Render Text //---------------------------------------------------------------*/
 	
 	// Render remaining time on the screen
 	int printTime = remainingTime;
 	std::string timeText = "Time: " + std::to_string(printTime) + "s";
 	render2dText(timeText, 1.0f, 1.0f, 1.0f, screenWidth / 2.0f - 55.0f, screenHeight - 30.0f);
 	
-	//Render Text
+	// Render Text
 	std::string levelText = "Level: " + std::to_string(currentLevel);
 	render2dText(levelText, 1.0f, 1.0f, 1.0f, 10.0f, screenHeight - 30.0f);
 
@@ -464,11 +466,12 @@ void display(void)
     glMatrixMode(GL_MODELVIEW);	
     glPopMatrix();
 
-	//Redraw frame
+	// Redraw frame
 	glutPostRedisplay();
 	glutSwapBuffers();
 }
 
+/*-----------------------------------------------// Draw Maze Function //----------------------------------------------------------*/
 void DrawMaze()
 {
 	for(int i=0; i<MAZE_HEIGHT; i++)
@@ -481,17 +484,17 @@ void DrawMaze()
 			if(MAZE[i][j] >= 1)
 			{
 			
-				//Apply Camera Manipluator to Set Model View Matrix on GPU
+				// Apply Camera Manipluator to Set Model View Matrix on GPU
 				ModelViewMatrix.toIdentity();
 				Matrix4x4 m = cameraManip.apply(ModelViewMatrix);
 				glUniformMatrix4fv(	
-					MVMatrixUniformLocation,  	//Uniform location
-					1,					        //Number of Uniforms
-					false,				        //Transpose Matrix
-					m.getPtr());	        //Pointer to Matrix Values
+					MVMatrixUniformLocation,  	// Uniform location
+					1,					        // Number of Uniforms
+					false,				        // Transpose Matrix
+					m.getPtr());	        // Pointer to Matrix Values
 			
 
-				//Set Colour after program is in use
+				// Set Colour after program is in use
 				glActiveTexture(GL_TEXTURE0);
 				glBindTexture(GL_TEXTURE_2D, crateTexture);
 				glUniform1i(TextureMapUniformLocation, 0);
@@ -507,7 +510,7 @@ void DrawMaze()
 				
 				Matrix4x4 m = cameraManip.apply(ModelViewMatrix);
 				
-				//Set Colour after program is in use
+				// Set Colour after program is in use
 				glActiveTexture(GL_TEXTURE0);
 				glBindTexture(GL_TEXTURE_2D, coinTexture);
 				glUniform1i(TextureMapUniformLocation, 0);
@@ -526,6 +529,7 @@ void DrawMaze()
 
 }
 
+/*------------------------------------------------// Draw Tank Function //---------------------------------------------------------*/
 void DrawTank(float x, float y, float z) {
 	
 	Matrix4x4 m = cameraManip.apply(ModelViewMatrix);
@@ -534,32 +538,31 @@ void DrawTank(float x, float y, float z) {
 	m.rotate(tankRotation, 0.0f, 1.0f, 0.0f);
 	m.scale(0.3f, 0.3f, 0.3f); 
 	
-	//Bind the tank 
+	// Bind the tank 
 	glActiveTexture(GL_TEXTURE0);
 	glBindTexture(GL_TEXTURE_2D, tankTexture);
 	glUniform1i(TextureMapUniformLocation, 0);
 	
-	// Draw Chassis
+/*-------------------------------------------------// Draw Chassis //--------------------------------------------------------------*/
 	m.translate(x, y, z);
 	glUniformMatrix4fv(MVMatrixUniformLocation, 1, false, m.getPtr());
 	chassisMesh.Draw(vertexPositionAttribute, vertexNormalAttribute, vertexTexcoordAttribute);
 	
-	// Draw Turret
+/*-------------------------------------------------// Draw Turret //---------------------------------------------------------------*/
 	Matrix4x4 turretMatrix = m;
 	turretMatrix.translate(0.0f, 0.0f, 0.0f);
-	turretMatrix.rotate(turretYaw, 0.0f, 1.0f, 0.0f);
-	turretMatrix.rotate(turretPitch, 1.0f, 0.0f, 0.0f);
+	turretMatrix.rotate(turretBaseRotation, 0.0f, 1.0f, 0.0f);
 	glUniformMatrix4fv(MVMatrixUniformLocation, 1, false, turretMatrix.getPtr());
 	turretMesh.Draw(vertexPositionAttribute, vertexNormalAttribute, vertexTexcoordAttribute);
 	
-	// Draw Front Wheels
+/*-------------------------------------------------// Draw Front Wheeels //--------------------------------------------------------*/
 	Matrix4x4 frontWheelMatrix = m;
 	frontWheelMatrix.translate(0.0f, 0.1f, 0.0f);
 	//frontWheelMatrix.rotate(wheelRotation, 1.0f, 0.0f, 0.0f); 
 	glUniformMatrix4fv(MVMatrixUniformLocation, 1, false, frontWheelMatrix.getPtr());
 	frontWheelMesh.Draw(vertexPositionAttribute, vertexNormalAttribute, vertexTexcoordAttribute);
 	
-	// Draw Back Wheels
+/*-------------------------------------------------// Draw Back Wheels //----------------------------------------------------------*/
 	Matrix4x4 backWheelMatrix = m;
 	//backWheelMatrix.rotate(wheelRotation, 1.0f, 0.0f, 0.0f);
 	backWheelMatrix.translate(0.0f, 0.0f, 0.0f);
@@ -567,6 +570,7 @@ void DrawTank(float x, float y, float z) {
 	backWheelMesh.Draw(vertexPositionAttribute, vertexNormalAttribute, vertexTexcoordAttribute);
 }
 
+/*------------------------------------------------// Tank Movement Function //-----------------------------------------------------*/
 void updateTankMovement(Vector3f &tankVelocity, float &tankAngle) 
 {
 		// Apply Turning
@@ -592,6 +596,7 @@ void updateTankMovement(Vector3f &tankVelocity, float &tankAngle)
 
 }	
 
+/*------------------------------------------------// Tank Falling Function //------------------------------------------------------*/
 void checkfall() {
 	// Convert tank world position to maze indices
 	int i = static_cast<int>(round(tankPosition.x / 2.0f));
@@ -622,26 +627,29 @@ void checkfall() {
 	
 }
 
+/*-----------------------------------------------------// Camera Function //-------------------------------------------------------*/
 void updateCameraPosition() {
 
 	// Calculate tanks orientation in world space
-	//float pan = atan2(tankVelocity.z, -tankVelocity.x) ;
-	float pan = tankRotation * (M_PI / 180.0f);
-	float tilt = -0.5f;
+	float targetpan = (tankRotation + turretBaseRotation) * (M_PI / 180.0f);
+
+	float smoothing = 5.0f; 
+	cameraPan += (targetpan - cameraPan) * smoothing * deltaTime;
+
+	float tilt = -0.8f;
 	float radius = cameraDistance;
 
-	cameraManip.setPanTiltRadius(pan, tilt, radius);
-
+	cameraManip.setPanTiltRadius(cameraPan, tilt, radius);
 	cameraManip.setFocus(tankPosition);
-
 }
 
 
-//! Keyboard Interaction
+
+/*----------------------------------------------------// KeyBoard Interaction //---------------------------------------------------*/
 void keyboard(unsigned char key, int x, int y)
 {
-	//Quits program when esc is pressed
-	if (key == 27)	//esc key code
+	// Quits program when esc is pressed
+	if (key == 27)	// esc key code
 	{
 		exit(0);
 	}
@@ -656,17 +664,17 @@ void keyboard(unsigned char key, int x, int y)
 		switchLevel(-1);
 	}	
 	
-    //Set key status
+    // Set key status
     keyStates[key] = true;  
 }
 
-//! Handle key up situation
+// Handle key up situation
 void keyUp(unsigned char key, int x, int y)
 {
     keyStates[key] = false;
 }
 
-//! Handle Keys
+/*---------------------------------------------------// HandleKeys Funuction //----------------------------------------------------*/
 void handleKeys()
 {
 
@@ -679,12 +687,6 @@ void handleKeys()
 		return;
 	}
 
-	//if (remainingTime = 0){
-		//moveDirection = 0.0f;
-		//turnDirection = 0.0f;
-//
-		//return;
-	//}
 	if(keyStates['w'])
     	{
 			moveDirection = 1.0f;
@@ -729,29 +731,27 @@ void handleKeys()
  	}
 	
 	updateTankMovement(tankVelocity, tankRotation);
-
 	checkfall();
-
-	//cameraManip.setFocus(tankPosition);
 }
 
-// Mouse Interaction
+/*--------------------------------------------------------// Mouse Interaction //--------------------------------------------------*/
 void mouse(int button, int state, int x, int y)
 {
-	if (button == GLUT_LEFT_BUTTON) {
-		if (state == GLUT_UP) {
-			rotatingTurret = true;
-			lastMouseX = x;
-		} else if (state == GLUT_DOWN) {
-			rotatingTurret = false;
-		}
-	}
+	//if (button == GLUT_LEFT_BUTTON) {
+		//if (state == GLUT_UP) {
+			//rotatingTurret = true;
+		//} else if (state == GLUT_DOWN) {
+			//rotatingTurret = false;
+		//}
+	//}
 
 	if (button == GLUT_RIGHT_BUTTON) {
 		if (state == GLUT_DOWN) {
-			rotatingCamera = true;
+			rotatingTurret= true;
+			//glutSetCursor(GLUT_CURSOR_NONE);
 		} else if (state == GLUT_UP) {
-			rotatingCamera = false;
+			rotatingTurret = false;
+			//glutSetCursor(GLUT_CURSOR_INHERIT);
 		}
 	}
 
@@ -759,39 +759,40 @@ void mouse(int button, int state, int x, int y)
     glutPostRedisplay(); 
 }
 
-
 // Mouse Interaction
 void motion(int x, int y)
 {
-    if (rotatingTurret) {
-        // Get the change in mouse position
-        int dx = x - lastMouseX; // X-axis movement
-        int dz = y - lastMouseY; // Y-axis movement (will be treated like Z-axis control)
+	//if (!rotatingTurret) return;
 
-        // Adjust the yaw based on both the X and Z movements
-        turretYaw -= dx * 0.3f;  // Adjust sensitivity for X-axis (horizontal movement)
-        turretYaw -= dz * 0.3f;  // Adjust sensitivity for Z-axis (vertical movement)
+	if (x == screenWidth / 2 && y == screenHeight / 2)
+		return;
 
-        // Wrap the yaw to ensure it stays within [0, 360] degrees
-        if (turretYaw > 360.0f) {
-            turretYaw -= 360.0f;
-        }
-        if (turretYaw < 0.0f) {
-            turretYaw += 360.0f;
-        }
+    //if (rotatingTurret) {
+        float deltaX = -(x - screenWidth / 2);
+		float dy = (screenHeight / 2 - y);
 
-        // Update the last mouse positions
-        lastMouseX = x;
-        lastMouseY = y;
-    }
+		targetTurretRotation = atan2(deltaX, dy) * (180.0f / M_PI);
+		
+	if (targetTurretRotation > 180.0f) targetTurretRotation -= 360.0f;
+	if (targetTurretRotation < -180.0f) targetTurretRotation += 360.0f;
 
-    if (rotatingCamera) {
-        cameraManip.handleMouseMotion(x, y);
-        glutPostRedisplay();
-    }
+	glutWarpPointer(screenWidth / 2, screenHeight / 2);
+		
+    //}
 }
 
+void updateTurretRotation() 
+{
+	float angleDifference = targetTurretRotation - turretBaseRotation;
 
+	if (angleDifference > 180.0f) angleDifference -= 360.0f;
+	if (angleDifference < -180.0f) angleDifference += 360.0f;
+
+	if (fabs(angleDifference) > 0.01f) {
+		turretBaseRotation += angleDifference * 0.1f;
+	}
+
+}
 
 void specialKeyboard(int key, int x, int y) 
 {
@@ -803,12 +804,12 @@ void specialKeyUp(int key, int x, int y)
 	keyStates[key] = false;	
 }
 
-//! Timer Function
+/*-------------------------------------------------------// Timer Function //------------------------------------------------------*/
 void Timer(int value)
 {
 	remainingTime -= 0.03f;	
 	
-	//Check if the time is up
+	// Check if the time is up
 	if (remainingTime < 0)
 	{
 		remainingTime = 0;
@@ -827,10 +828,11 @@ void Timer(int value)
 	// Redisplay the scene    
 	glutPostRedisplay();
 		
-	//Call function again after 10 milli seconds
+	// Call function again after 10 milli seconds
 	glutTimerFunc(10,Timer, 0);
 }
 
+/*------------------------------------------------// Set Up Render 2d Text Function //---------------------------------------------*/
 void render2dText(std::string text, float r, float g, float b, float x, float y) 
 {
 	glColor3f(r, g, b); //Set text Colour
@@ -841,3 +843,7 @@ void render2dText(std::string text, float r, float g, float b, float x, float y)
 		glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, text[i]);
 	}
 }	
+
+/*=================================================================================================================================*/
+/*--------------------------------------------------------------// END //----------------------------------------------------------*/
+/*=================================================================================================================================*/
