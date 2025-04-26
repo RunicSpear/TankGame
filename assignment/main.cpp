@@ -32,7 +32,8 @@ void loadMaze(const std::string& filename, int level);
 void DrawMaze();
 void DrawTank(float x, float y, float z);
 void render2dText(std::string text, float r, float g, float b, float x, float y);
-void updateTankMovement(Vector3f &tankVelocity, float &tankAngle);		
+void updateTankMovement(Vector3f &tankVelocity, float &tankAngle);	
+void updateCameraPosition();	
 				     
 // Screen size
 int screenWidth   	        = 1080;
@@ -243,8 +244,8 @@ int main(int argc, char** argv)
 	initTexture("../models/hamvee.bmp", tankTexture);
 
 	//Init Camera Manipultor
-	cameraManip.setPanTiltRadius(0.0f, 0.0f,20.f);
-	cameraManip.setFocus(Vector3f(MAZE_WIDTH, 0.0f, MAZE_HEIGHT));
+	//cameraManip.setPanTiltRadius(0.0f, 0.0f,20.f);
+	//cameraManip.setFocus(Vector3f(MAZE_WIDTH, 0.0f, MAZE_HEIGHT));
 
 	//Start main loop
 	glutMainLoop();
@@ -378,24 +379,28 @@ void display(void)
 	glUniform4f(SpecularUniformLocation, specular.x, specular.y, specular.z, 1.0);
 	glUniform1f(SpecularPowerUniformLocation, specularPower);
 
-	float radians = tankRotation * (M_PI / 180.0f);
-	float camX = tankPosition.x - cameraDistance * sin(radians);
-	float camZ = tankPosition.z - cameraDistance * cos(radians);
-	float camY = tankPosition.y + cameraHeight;
+	//float radians = atan2(tankVelocity.z, tankVelocity.x);
+	//float tankRotation = radians * (180.0f / M_PI);
+	//float camX = tankPosition.x - cameraDistance * sin(radians);
+	//float camZ = tankPosition.z - cameraDistance * cos(radians);
+	//float camY = tankPosition.y + cameraHeight;
 
+	
 	//Apply the camera view using gluLookAt
 	glMatrixMode(GL_MODELVIEW);
 	glLoadIdentity();
 
-	gluLookAt(
-		camX, camY, camZ,
-		tankPosition.x, tankPosition.y, tankPosition.z,
-		0.0f, 1.0f, 0.0f
-	);
+	//gluLookAt(
+		//camX, camY, camZ,
+		//tankPosition.x, tankPosition.y, tankPosition.z,
+		//0.0f, 1.0f, 0.0f
+	//);
 
 	DrawMaze();
 	
 	DrawTank(0.0f, 0.65f, 0.0f);
+
+	updateCameraPosition();
 
 	int tankTileX = (int)((tankPosition.x + 1.0f) / 2.0f);
 	int tankTileZ = (int)((tankPosition.z + 1.0f) / 2.0f);
@@ -617,6 +622,20 @@ void checkfall() {
 	
 }
 
+void updateCameraPosition() {
+
+	// Calculate tanks orientation in world space
+	//float pan = atan2(tankVelocity.z, -tankVelocity.x) ;
+	float pan = tankRotation * (M_PI / 180.0f);
+	float tilt = -0.5f;
+	float radius = cameraDistance;
+
+	cameraManip.setPanTiltRadius(pan, tilt, radius);
+
+	cameraManip.setFocus(tankPosition);
+
+}
+
 
 //! Keyboard Interaction
 void keyboard(unsigned char key, int x, int y)
@@ -713,7 +732,7 @@ void handleKeys()
 
 	checkfall();
 
-	//setFocus(tankPosition);
+	//cameraManip.setFocus(tankPosition);
 }
 
 // Mouse Interaction
