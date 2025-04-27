@@ -40,6 +40,7 @@ void render2dText(std::string text, float r, float g, float b, float x, float y)
 void updateTankMovement(Vector3f &tankVelocity, float &tankAngle);	
 void updateCameraPosition();	
 void updateTurretRotation();
+void DrawBall(float x, float y, float z);
 				     
 // Screen size
 int screenWidth   	        = 1080;
@@ -143,6 +144,7 @@ GLuint TextureMapUniformLocation;               	      // Texture Map Location
 GLuint crateTexture;				                  
 GLuint coinTexture;
 GLuint tankTexture;
+GLuint ballTexture;
 
 //Component Meshes
 Mesh crateMesh;			// Crate Mesh		                     
@@ -155,9 +157,7 @@ Mesh frontWheelMesh;		// Front Wheel Mesh
 Mesh backWheelMesh;		// Back Wheel Mesh
 
 //Ball Mesh
-
-
-
+Mesh ballMesh;
 
 // Array of key states
 bool keyStates[256];
@@ -257,6 +257,10 @@ int main(int argc, char** argv)
 	frontWheelMesh.loadOBJ("../models/front_wheel.obj");
 	backWheelMesh.loadOBJ("../models/back_wheel.obj");
 	initTexture("../models/hamvee.bmp", tankTexture);
+
+	// Ball
+	ballMesh.loadOBJ("../models/ball.obj");
+	initTexture("../models/ball.bmp", ballTexture);
 
 	//Start main loop
 	glutMainLoop();
@@ -395,8 +399,8 @@ void display(void)
 	glLoadIdentity();
 
 	DrawMaze();
-
-	DrawTank(0.0f, 0.65f, 0.0f);
+	DrawTank(0.0f, 3.0f, 0.0f);
+	DrawBall(0.0f, 6.0f, 0.0f);
 
 	updateTurretRotation();
 	updateCameraPosition();
@@ -534,7 +538,7 @@ void DrawTank(float x, float y, float z) {
 	
 	Matrix4x4 m = cameraManip.apply(ModelViewMatrix);
 	
-	m.translate(tankPosition.x, tankY + jumpHeight + 1.0f, tankPosition.z);
+	m.translate(tankPosition.x, tankY + jumpHeight, tankPosition.z);
 	m.rotate(tankRotation, 0.0f, 1.0f, 0.0f);
 	m.scale(0.3f, 0.3f, 0.3f); 
 	
@@ -569,6 +573,30 @@ void DrawTank(float x, float y, float z) {
 	glUniformMatrix4fv(MVMatrixUniformLocation, 1, false, backWheelMatrix.getPtr());
 	backWheelMesh.Draw(vertexPositionAttribute, vertexNormalAttribute, vertexTexcoordAttribute);
 }
+
+void DrawBall(float x, float y, float z) {
+
+	Matrix4x4 m = cameraManip.apply(ModelViewMatrix);
+
+	Matrix4x4 ballMatrix = m;
+	ballMatrix.translate(0.0f, 3.0f, 0.0f);
+
+	glActiveTexture(GL_TEXTURE0);
+	glBindTexture(GL_TEXTURE_2D, ballTexture);
+	glUniformMatrix4fv(MVMatrixUniformLocation, 1, false, ballMatrix.getPtr());
+	ballMesh.Draw(vertexPositionAttribute, vertexNormalAttribute, vertexTexcoordAttribute);
+
+}
+
+/*void DrawBall(const Ball& ball) {
+    Matrix4x4 m = cameraManip.apply(ModelViewMatrix);
+    m.translate(ball.position.x, ball.position.y, ball.position.z);
+    
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, ballTexture);
+    glUniformMatrix4fv(MVMatrixUniformLocation, 1, false, m.getPtr());
+    ballMesh.Draw(vertexPositionAttribute, vertexNormalAttribute, vertexTexcoordAttribute);
+}*/
 
 /*------------------------------------------------// Tank Movement Function //-----------------------------------------------------*/
 void updateTankMovement(Vector3f &tankVelocity, float &tankAngle) 
@@ -636,7 +664,7 @@ void updateCameraPosition() {
 	float smoothing = 5.0f; 
 	cameraPan += (targetpan - cameraPan) * smoothing * deltaTime;
 
-	float tilt = -0.8f;
+	float tilt = -1.1f;
 	float radius = cameraDistance;
 
 	cameraManip.setPanTiltRadius(cameraPan, tilt, radius);
@@ -737,13 +765,13 @@ void handleKeys()
 /*--------------------------------------------------------// Mouse Interaction //--------------------------------------------------*/
 void mouse(int button, int state, int x, int y)
 {
-	//if (button == GLUT_LEFT_BUTTON) {
-		//if (state == GLUT_UP) {
-			//rotatingTurret = true;
-		//} else if (state == GLUT_DOWN) {
+	if (button == GLUT_LEFT_BUTTON) {
+		if (state == GLUT_DOWN) {
+			
+		} //else if (state == GLUT_DOWN) {
 			//rotatingTurret = false;
 		//}
-	//}
+	}
 
 	if (button == GLUT_RIGHT_BUTTON) {
 		if (state == GLUT_DOWN) {
@@ -776,7 +804,7 @@ void motion(int x, int y)
 	if (targetTurretRotation > 180.0f) targetTurretRotation -= 360.0f;
 	if (targetTurretRotation < -180.0f) targetTurretRotation += 360.0f;
 
-	glutWarpPointer(screenWidth / 2, screenHeight / 2);
+	//glutWarpPointer(screenWidth / 2, screenHeight / 2);
 		
     //}
 }
@@ -793,6 +821,7 @@ void updateTurretRotation()
 	}
 
 }
+
 
 void specialKeyboard(int key, int x, int y) 
 {
