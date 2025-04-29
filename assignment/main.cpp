@@ -58,6 +58,8 @@ float g = -9.81f;
 float coinRotationAngle = 0.0f;
 float coinBounce = 0.0f;
 int coinsCollected = 0;
+int totalCoins = 0;
+
 
 //Maze Variables
 int currentLevel = 1;
@@ -196,16 +198,21 @@ void loadMaze(const std::string& filename, int level)
 	{
 		currentLine++;
 	}
+
+	totalCoins = 0;
 	
-	
-	for (int i = 0; i < MAZE_HEIGHT; i++)
-	{
-		for (int j = 0; j < MAZE_WIDTH; j++)
-		{
+	for (int i = 0; i < MAZE_HEIGHT; i++) {
+		for (int j = 0; j < MAZE_WIDTH; j++) {
 			file >> MAZE[i][j];
+
+			if (MAZE[i][j] == 2) {
+				totalCoins++;
+			}
 		}
 	}
 	file.close();
+
+	std::cout << "Level " << level << " loaded with " << totalCoins << " coins." << std::endl;
 }
 
 /*------------------------------------------------------// Switching Levels Function //--------------------------------------------*/
@@ -221,6 +228,11 @@ void switchLevel(int direction)
 	}
 	
 	coinsCollected = 0;
+
+	// Reset tank position to the center of the maze
+	tankPosition.x = centerX;
+	tankPosition.z = centerZ;
+	tankY = 0.0f;
 
 	loadMaze("maze.txt", currentLevel);
 	std::cout << "Switched to level" << currentLevel << std::endl;
@@ -421,7 +433,7 @@ void display(void)
 	updateTurretRotation();
 	updateCameraPosition();
 
-	// Collecting coins
+	// Tank collecting coins
 	int tankTileX = (int)((tankPosition.x + 1.0f) / 2.0f);
 	int tankTileZ = (int)((tankPosition.z + 1.0f) / 2.0f);
 	if (tankTileZ >= 0 && tankTileX < MAZE_HEIGHT && tankTileX >= 0 && tankTileZ < MAZE_WIDTH) {
@@ -429,22 +441,13 @@ void display(void)
 			MAZE[tankTileX][tankTileZ] = 1; // Remove coin
 			coinsCollected++; // Increment counter
 			std::cout << "Coins collected: " << coinsCollected << std::endl;
-		}
-	}
 
-	bool coinsRemaining = false;
-	for (int i = 0; i < MAZE_HEIGHT; ++i) {
-		for (int j = 0; j < MAZE_WIDTH; ++j) {
-			if (MAZE[i][j] == 2) {
-				coinsRemaining = true;
-				break;
+			// If all coins are collected switch level
+			if (coinsCollected == totalCoins) {
+				switchLevel(1);
+				coinsCollected = 0;
 			}
 		}
-		if (coinsRemaining) break;
-	}
-
-	if (!coinsRemaining) {
-		switchLevel(1);
 	}
 
 	// Unuse Shader
@@ -635,6 +638,12 @@ void updateBallPosition() {
 			MAZE[ballTileX][ballTileZ] = 1; // Remove Coin
 			coinsCollected++;
 			std::cout << "Coins Collected: " << coinsCollected << std::endl;
+
+			// If all coins are collected switch level
+			if (coinsCollected == totalCoins) {
+				switchLevel(1);
+				coinsCollected = 0;
+			}
 		}
 	}
 }
@@ -739,8 +748,8 @@ void updateCameraPosition() {
 	float smoothing = 5.0f; 
 	cameraPan += (targetpan - cameraPan) * smoothing * deltaTime;
 
-	float tilt = -1.1f;
-	float radius = cameraDistance + 10.0f;
+	float tilt = -1.0f;
+	float radius = cameraDistance ;
 
 	cameraManip.setPanTiltRadius(cameraPan, tilt, radius);
 	cameraManip.setFocus(tankPosition);
@@ -911,6 +920,7 @@ void specialKeyUp(int key, int x, int y)
 /*-------------------------------------------------------// Timer Function //------------------------------------------------------*/
 void Timer(int value)
 {
+
 	remainingTime -= 0.03f;	
 	
 	// Check if the time is up
