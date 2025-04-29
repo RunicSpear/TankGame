@@ -627,7 +627,16 @@ void updateBallPosition() {
 		isBallFired = false;
 	}
 
-	
+	int ballTileX = (int)((ballPosX + 1.0f) / 2.0f);
+	int ballTileZ = (int)((ballPosZ + 1.0f) / 2.0f);
+
+	if (ballTileZ >= 0 && ballTileX < MAZE_HEIGHT && ballTileX >= 0 && ballTileZ < MAZE_WIDTH){
+		if (MAZE[ballTileX][ballTileZ] == 2) {
+			MAZE[ballTileX][ballTileZ] = 1; // Remove Coin
+			coinsCollected++;
+			std::cout << "Coins Collected: " << coinsCollected << std::endl;
+		}
+	}
 }
 
 void fireBall() {
