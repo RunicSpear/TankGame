@@ -41,6 +41,8 @@ void updateTankMovement(Vector3f &tankVelocity, float &tankAngle);
 void updateCameraPosition();	
 void updateTurretRotation();
 void DrawBall(float x, float y, float z);
+void updateBallPosition();
+void fireBall();
 				     
 // Screen size
 int screenWidth   	        = 1080;
@@ -49,8 +51,8 @@ int screenHeight   	        = 1080;
 /*----------------------------------------------------// Global Variables //-------------------------------------------------------*/
 
 //Environment Variables
-float specularPower = 10.0;
-float g = -9.81;
+float specularPower = 10.0f;
+float g = -9.81f;
 
 //Coin Variables
 float coinRotationAngle = 0.0f;
@@ -63,7 +65,9 @@ const int MAZE_WIDTH = 15;
 const int MAZE_HEIGHT = 15;
 float centerX = (MAZE_WIDTH - 3) * 2.0f / 2;
 float centerZ = (MAZE_HEIGHT - 1) * 2.0f / 2;
-int MAZE[MAZE_HEIGHT][MAZE_WIDTH]; 
+int MAZE[MAZE_HEIGHT][MAZE_WIDTH];
+int firing = 0;
+int angleBall = 0;
 
 //Tank Variables
 float tankX = 0.0f;
@@ -112,6 +116,17 @@ int mouseY = screenHeight / 2;
 int lastMouseX = screenWidth / 2;
 bool firstMouse = true;
 bool ignoreMouseMotion = false;
+
+// Ball Variables
+float ballPosX = 0.0f;
+float ballPosY = 6.0f;
+float ballPosZ = 0.0f;
+//float ballSpeed = 0.2f;
+bool ballActive = true;
+bool isBallFired = false;
+float ballLifeTime = 0.0f; // Time since ball was fired
+float gravityDelay = 0.2f; // Delay in seconds before gravity starts
+Vector3f ballDirection;
 
 //Timer Variables
 float remainingTime = 200.0f;
@@ -400,6 +415,7 @@ void display(void)
 
 	DrawMaze();
 	DrawTank(0.0f, 3.0f, 0.0f);
+	updateBallPosition();
 	DrawBall(0.0f, 6.0f, 0.0f);
 
 	updateTurretRotation();
@@ -575,28 +591,78 @@ void DrawTank(float x, float y, float z) {
 }
 
 void DrawBall(float x, float y, float z) {
+	if (!ballActive) return;
+	if (!isBallFired) return;
 
-	Matrix4x4 m = cameraManip.apply(ModelViewMatrix);
-
-	Matrix4x4 ballMatrix = m;
-	ballMatrix.translate(0.0f, 3.0f, 0.0f);
-
-	glActiveTexture(GL_TEXTURE0);
-	glBindTexture(GL_TEXTURE_2D, ballTexture);
-	glUniformMatrix4fv(MVMatrixUniformLocation, 1, false, ballMatrix.getPtr());
-	ballMesh.Draw(vertexPositionAttribute, vertexNormalAttribute, vertexTexcoordAttribute);
-
-}
-
-/*void DrawBall(const Ball& ball) {
     Matrix4x4 m = cameraManip.apply(ModelViewMatrix);
-    m.translate(ball.position.x, ball.position.y, ball.position.z);
+    m.translate(ballPosX, ballPosY, ballPosZ);
+	m.scale(0.18f, 0.18f, 0.18f);
     
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, ballTexture);
     glUniformMatrix4fv(MVMatrixUniformLocation, 1, false, m.getPtr());
     ballMesh.Draw(vertexPositionAttribute, vertexNormalAttribute, vertexTexcoordAttribute);
-}*/
+}
+
+void updateBallPosition() {
+	if (!ballActive) return;
+	if (!isBallFired) return;
+
+	ballLifeTime += deltaTime;
+
+	ballPosX += ballDirection.x * deltaTime;
+	ballPosZ += ballDirection.z * deltaTime;
+	
+	if (ballLifeTime >= gravityDelay) {
+		float t = (ballLifeTime - gravityDelay);
+		float easedGravity = g * (1.0f - expf(-3.0f * t));
+		verticalVelocity += easedGravity * 100.0f * deltaTime;
+	}
+
+	ballPosY += verticalVelocity * deltaTime;
+
+	if (ballPosY <= 0.0f) {
+		ballPosY = 0.0f;
+		ballActive = false;
+		isBallFired = false;
+	}
+
+	
+}
+
+void fireBall() {
+	if (!isBallFired) {
+
+		// Set initial position to the turret
+		ballPosX = tankPosition.x;
+		ballPosY = tankY + 2.0f;
+		ballPosZ = tankPosition.z;
+
+		// Calculate direction based on tank and turret rotation
+		float angle = (tankRotation + turretBaseRotation) * (M_PI / 180.0f);
+		float dirX = sin(angle);
+		float dirZ = cos(angle);
+
+		float length = sqrt(dirX * dirX + dirZ * dirZ);
+		if (length != 0.0f) {
+			dirX /= length;
+			dirZ /= length;
+		}
+
+		// Fire slightly in front of tank barrel
+		float offset = 0.8f;
+		ballPosX = tankPosition.x + dirX * offset;
+		ballPosZ = tankPosition.z + dirZ * offset;
+
+		// Assign directional speed
+		ballDirection = Vector3f(dirX, 0.0f, dirZ) * 12.0f;
+		verticalVelocity = 0.0f;
+		ballLifeTime = 0.0f;
+
+		isBallFired = true;
+		ballActive = true;
+	}
+}
 
 /*------------------------------------------------// Tank Movement Function //-----------------------------------------------------*/
 void updateTankMovement(Vector3f &tankVelocity, float &tankAngle) 
@@ -665,7 +731,7 @@ void updateCameraPosition() {
 	cameraPan += (targetpan - cameraPan) * smoothing * deltaTime;
 
 	float tilt = -1.1f;
-	float radius = cameraDistance;
+	float radius = cameraDistance + 10.0f;
 
 	cameraManip.setPanTiltRadius(cameraPan, tilt, radius);
 	cameraManip.setFocus(tankPosition);
@@ -767,7 +833,7 @@ void mouse(int button, int state, int x, int y)
 {
 	if (button == GLUT_LEFT_BUTTON) {
 		if (state == GLUT_DOWN) {
-			
+			fireBall();
 		} //else if (state == GLUT_DOWN) {
 			//rotatingTurret = false;
 		//}
