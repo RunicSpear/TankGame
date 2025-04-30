@@ -1,7 +1,6 @@
 /*=================================================================================================================================*/
 /*-------------------------------------------------------// Start //---------------------------------------------------------------*/
 /*=================================================================================================================================*/
-
 // Includes
 #include <GL/glew.h>
 #include <GL/glut.h>
@@ -17,11 +16,8 @@
 #include <fstream>
 
 /*---------------------------------------------------// Function Prototypes //-----------------------------------------------------*/
-
 bool initGL(int argc, char** argv);
-void initShader();
-void initGeometry();  //Function to init Geometry 
-void drawGeometry();		
+void initShader();	
 void display(void);
 void keyboard(unsigned char key, int x, int y);
 void keyUp(unsigned char key, int x, int y);
@@ -43,6 +39,9 @@ void updateTurretRotation();
 void DrawBall(float x, float y, float z);
 void updateBallPosition();
 void fireBall();
+void updateSteeringAngle(float deltaTime);
+void drawHUD();
+void resetGame();
 				     
 // Screen size
 int screenWidth   	        = 1080;
@@ -53,6 +52,9 @@ int screenHeight   	        = 1080;
 //Environment Variables
 float specularPower = 10.0f;
 float g = -9.81f;
+bool isPaused = false;
+bool showMenu = false;
+
 
 //Coin Variables
 float coinRotationAngle = 0.0f;
@@ -60,39 +62,36 @@ float coinBounce = 0.0f;
 int coinsCollected = 0;
 int totalCoins = 0;
 
-
 //Maze Variables
 int currentLevel = 1;
+int selectedLevel = currentLevel;
 const int MAZE_WIDTH = 15;
 const int MAZE_HEIGHT = 15;
 float centerX = (MAZE_WIDTH - 3) * 2.0f / 2;
 float centerZ = (MAZE_HEIGHT - 1) * 2.0f / 2;
 int MAZE[MAZE_HEIGHT][MAZE_WIDTH];
-int firing = 0;
-int angleBall = 0;
+bool isGameOver = false;
 
 //Tank Variables
-float tankX = 0.0f;
-float tankZ = 0.0f;
 float tankRotation = 0.0f;
 float moveSpeed = 2.0f;
 float rotationSpeed = 1.0f;
-bool rotatingTurret = false;
 Vector3f tankPosition(centerX, 0.0f, centerZ);
 Vector3f tankVelocity(0.0f, 0.0f, 0.0f);
 
 //Movement Variables
 float maxSpeed = 10.0f;
-float acceleration = 10.0f;
 float friction = 3.0f;
 float moveDirection = 0.0f;
 float turnDirection = 0.0f;
 float deltaTime = 0.016f;
 float wheelRotation = 0.0f;
-const float wheelRadius = 0.1f;
-float steeringAngle = 0.0f; 
+float steeringAngle = 0.0f;
 float tankY = 0.0f;
 float verticalVelocity = 0.0f;
+float steeringangle = 0.0f;
+float steeringSpeed = 5.0f;
+float maxSteeringAngle = 30.0f;
 bool isfalling = false;
 
 //Jumping Variables
@@ -104,26 +103,18 @@ bool maxJump = false;
 
 //Camera Variables
 float cameraDistance = 7.0f;
-float cameraHeight = 5.0f;
-bool rotatingCamera = false;
 float cameraPan = 0.0f;
+bool isFirstPerson = false;
 
 // Turret Controls
-float sensitivity = 50.0f;
-float turretYaw = 0.0f;
 float turretBaseRotation = 0.0f;
 float targetTurretRotation = 0.0f;
-int mouseX = screenWidth / 2;
-int mouseY = screenHeight / 2;
-int lastMouseX = screenWidth / 2;
-bool firstMouse = true;
-bool ignoreMouseMotion = false;
 
 // Ball Variables
 float ballPosX = 0.0f;
 float ballPosY = 6.0f;
 float ballPosZ = 0.0f;
-//float ballSpeed = 0.2f;
+float ballRotationAngle = 0.0f;
 bool ballActive = true;
 bool isBallFired = false;
 float ballLifeTime = 0.0f; // Time since ball was fired
@@ -179,6 +170,16 @@ Mesh ballMesh;
 // Array of key states
 bool keyStates[256];
 
+enum GameState {
+    MENU,
+    PLAYING,
+    LEVEL_SELECT
+};
+
+GameState currentGameState = MENU;
+
+
+
 // Function to read through a text file to load the maze
 void loadMaze(const std::string& filename, int level)
 {	
@@ -200,7 +201,7 @@ void loadMaze(const std::string& filename, int level)
 	}
 
 	totalCoins = 0;
-	
+
 	for (int i = 0; i < MAZE_HEIGHT; i++) {
 		for (int j = 0; j < MAZE_WIDTH; j++) {
 			file >> MAZE[i][j];
@@ -227,12 +228,16 @@ void switchLevel(int direction)
 		currentLevel = 1;
 	}
 	
+	// Reset Coins for new level
 	coinsCollected = 0;
 
 	// Reset tank position to the center of the maze
 	tankPosition.x = centerX;
 	tankPosition.z = centerZ;
 	tankY = 0.0f;
+
+	// Reset Time Remaining for new level
+	remainingTime = 200;
 
 	loadMaze("maze.txt", currentLevel);
 	std::cout << "Switched to level" << currentLevel << std::endl;
@@ -254,7 +259,6 @@ void reshape(int width, int height)
 // Main Program Entry
 int main(int argc, char** argv)
 {	
-	
 	//Load Maze
 	loadMaze("maze.txt", currentLevel);
 	
@@ -355,7 +359,6 @@ void initShader()
 	vertexNormalAttribute = glGetAttribLocation(shaderProgramID,    "aVertexNormal");
 	vertexTexcoordAttribute = glGetAttribLocation(shaderProgramID, "aVertexTexcoord");
 
-	//
 	MVMatrixUniformLocation         = glGetUniformLocation(shaderProgramID, "MVMatrix_uniform"); 
 	ProjectionUniformLocation       = glGetUniformLocation(shaderProgramID, "ProjMatrix_uniform"); 
 	LightPositionUniformLocation    = glGetUniformLocation(shaderProgramID, "LightPosition_uniform"); 
@@ -377,7 +380,6 @@ void initTexture(std::string filename, GLuint & textureID)
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR); 
 
-
 	// Get texture Data
 	int width, height;
 	char* data;
@@ -392,7 +394,6 @@ void initTexture(std::string filename, GLuint & textureID)
 /*-----------------------------------------------// Display Loop //----------------------------------------------------------------*/
 void display(void)
 {
-	
 	// Handle keys
 	handleKeys();
 
@@ -421,6 +422,8 @@ void display(void)
 	glUniform4f(SpecularUniformLocation, specular.x, specular.y, specular.z, 1.0);
 	glUniform1f(SpecularPowerUniformLocation, specularPower);
 
+	
+
 	//Apply the camera view using gluLookAt
 	glMatrixMode(GL_MODELVIEW);
 	glLoadIdentity();
@@ -430,8 +433,11 @@ void display(void)
 	updateBallPosition();
 	DrawBall(0.0f, 6.0f, 0.0f);
 
+	updateSteeringAngle(deltaTime);
 	updateTurretRotation();
 	updateCameraPosition();
+
+	//glutSetCursor(GLUT_CURSOR_NONE);
 
 	// Tank collecting coins
 	int tankTileX = (int)((tankPosition.x + 1.0f) / 2.0f);
@@ -440,6 +446,9 @@ void display(void)
 		if (MAZE[tankTileX][tankTileZ] == 2) {
 			MAZE[tankTileX][tankTileZ] = 1; // Remove coin
 			coinsCollected++; // Increment counter
+
+			system("canberra-gtk-play -f coins.wav &");
+
 			std::cout << "Coins collected: " << coinsCollected << std::endl;
 
 			// If all coins are collected switch level
@@ -466,29 +475,7 @@ void display(void)
 	glPushMatrix();
 	glLoadIdentity();
 
-	/*---------------------------------------------// Render Text //---------------------------------------------------------------*/
-	
-	// Render remaining time on the screen
-	int printTime = remainingTime;
-	std::string timeText = "Time: " + std::to_string(printTime) + "s";
-	render2dText(timeText, 1.0f, 1.0f, 1.0f, screenWidth / 2.0f - 55.0f, screenHeight - 30.0f);
-	
-	// Render Text
-	std::string levelText = "Level: " + std::to_string(currentLevel);
-	render2dText(levelText, 1.0f, 1.0f, 1.0f, 10.0f, screenHeight - 30.0f);
-
-	// Render coins collected on the screen
-	std::string coinsText = "Coins: " + std::to_string(coinsCollected);
-	render2dText(coinsText, 1.0f, 1.0f, 1.0f, 10.0f, screenHeight - 60.0f);
- 	
-	glEnable(GL_DEPTH_TEST);
-	
-    // Restore previous matrix state
-    glMatrixMode(GL_PROJECTION);
-    glPopMatrix();
-    glMatrixMode(GL_MODELVIEW);	
-    glPopMatrix();
-
+	drawHUD();
 	// Redraw frame
 	glutPostRedisplay();
 	glutSwapBuffers();
@@ -497,16 +484,12 @@ void display(void)
 /*-----------------------------------------------// Draw Maze Function //----------------------------------------------------------*/
 void DrawMaze()
 {
-	for(int i=0; i<MAZE_HEIGHT; i++)
+	for(int i = 0; i < MAZE_HEIGHT; i++)
 	{
-	
-		for( int j=0; j<MAZE_WIDTH; j++)
-		{
-		
-			
+		for( int j = 0; j < MAZE_WIDTH; j++)
+		{	
 			if(MAZE[i][j] >= 1)
 			{
-			
 				// Apply Camera Manipluator to Set Model View Matrix on GPU
 				ModelViewMatrix.toIdentity();
 				Matrix4x4 m = cameraManip.apply(ModelViewMatrix);
@@ -516,7 +499,6 @@ void DrawMaze()
 					false,				        // Transpose Matrix
 					m.getPtr());	        // Pointer to Matrix Values
 			
-
 				// Set Colour after program is in use
 				glActiveTexture(GL_TEXTURE0);
 				glBindTexture(GL_TEXTURE_2D, crateTexture);
@@ -528,16 +510,13 @@ void DrawMaze()
 				crateMesh.Draw(vertexPositionAttribute, vertexNormalAttribute, vertexTexcoordAttribute);
 			}
 			
-		        if(MAZE[i][j] == 2)
+		    if(MAZE[i][j] == 2)
 			{
-				
 				Matrix4x4 m = cameraManip.apply(ModelViewMatrix);
-				
 				// Set Colour after program is in use
 				glActiveTexture(GL_TEXTURE0);
 				glBindTexture(GL_TEXTURE_2D, coinTexture);
 				glUniform1i(TextureMapUniformLocation, 0);
-				
 				float bounceHeight = 0.1f * sin(coinBounce);
 				m.translate(i*2.0, 2.0f + bounceHeight, j*2.0);  
 				m.scale(0.5f, 0.5f, 0.5f);
@@ -545,11 +524,8 @@ void DrawMaze()
 				glUniformMatrix4fv(MVMatrixUniformLocation, 1, false, m.getPtr());
 				coinMesh.Draw(vertexPositionAttribute, vertexNormalAttribute, vertexTexcoordAttribute);
 			}
-
 		}
-	
 	}
-
 }
 
 /*------------------------------------------------// Draw Tank Function //---------------------------------------------------------*/
@@ -581,7 +557,8 @@ void DrawTank(float x, float y, float z) {
 /*-------------------------------------------------// Draw Front Wheeels //--------------------------------------------------------*/
 	Matrix4x4 frontWheelMatrix = m;
 	frontWheelMatrix.translate(0.0f, 0.1f, 0.0f);
-	//frontWheelMatrix.rotate(wheelRotation, 1.0f, 0.0f, 0.0f); 
+	frontWheelMatrix.rotate(steeringAngle, 0.0f, 1.0f, 0.0f); 
+	frontWheelMatrix.rotate(wheelRotation, 1.0f, 0.0f, 0.0f);
 	glUniformMatrix4fv(MVMatrixUniformLocation, 1, false, frontWheelMatrix.getPtr());
 	frontWheelMesh.Draw(vertexPositionAttribute, vertexNormalAttribute, vertexTexcoordAttribute);
 	
@@ -589,17 +566,24 @@ void DrawTank(float x, float y, float z) {
 	Matrix4x4 backWheelMatrix = m;
 	//backWheelMatrix.rotate(wheelRotation, 1.0f, 0.0f, 0.0f);
 	backWheelMatrix.translate(0.0f, 0.0f, 0.0f);
+	frontWheelMatrix.rotate(wheelRotation, 1.0f, 0.0f, 0.0f);
 	glUniformMatrix4fv(MVMatrixUniformLocation, 1, false, backWheelMatrix.getPtr());
 	backWheelMesh.Draw(vertexPositionAttribute, vertexNormalAttribute, vertexTexcoordAttribute);
 }
 
+/*------------------------------------------------// Draw Ball //-------------------------------------------------------------------*/
 void DrawBall(float x, float y, float z) {
 	if (!ballActive) return;
 	if (!isBallFired) return;
 
+	ballRotationAngle += 270.0f * deltaTime;
+
+	if (ballRotationAngle > 360.0f) ballRotationAngle -=360.0f;
+
     Matrix4x4 m = cameraManip.apply(ModelViewMatrix);
     m.translate(ballPosX, ballPosY, ballPosZ);
 	m.scale(0.18f, 0.18f, 0.18f);
+	m.rotate(ballRotationAngle, 1.0f, 0.0f, 0.0f);
     
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, ballTexture);
@@ -637,6 +621,9 @@ void updateBallPosition() {
 		if (MAZE[ballTileX][ballTileZ] == 2) {
 			MAZE[ballTileX][ballTileZ] = 1; // Remove Coin
 			coinsCollected++;
+
+			system("canberra-gtk-play -f coins.wav &");
+
 			std::cout << "Coins Collected: " << coinsCollected << std::endl;
 
 			// If all coins are collected switch level
@@ -650,7 +637,6 @@ void updateBallPosition() {
 
 void fireBall() {
 	if (!isBallFired) {
-
 		// Set initial position to the turret
 		ballPosX = tankPosition.x;
 		ballPosY = tankY + 2.0f;
@@ -699,13 +685,9 @@ void updateTankMovement(Vector3f &tankVelocity, float &tankAngle)
 		if (moveDirection == 0.0f) {
 			tankVelocity = tankVelocity * 0.9f;
 		}
-	
+
 		// Update tank Position
 		tankPosition = tankPosition + tankVelocity * deltaTime; 
-
-		// Calculate rotation amount
-		wheelRotation += (moveSpeed * deltaTime) / wheelRadius;
-
 }	
 
 /*------------------------------------------------// Tank Falling Function //------------------------------------------------------*/
@@ -730,32 +712,81 @@ void checkfall() {
 		verticalVelocity = 0.0f;
 	}
 
-
 	if (isfalling) {
 		verticalVelocity += g * 10.0f * deltaTime;
 		tankY = verticalVelocity * deltaTime;
+		isGameOver = true;
 	}
-
-	
 }
 
 /*-----------------------------------------------------// Camera Function //-------------------------------------------------------*/
 void updateCameraPosition() {
 
-	// Calculate tanks orientation in world space
-	float targetpan = (tankRotation + turretBaseRotation) * (M_PI / 180.0f);
+	if (isFirstPerson) {
+		// Calculate tanks orientation in world space
+		float targetpan = (tankRotation + turretBaseRotation) * (M_PI / 180.0f);
+		float smoothing = 10.0f; 
+		cameraPan += (targetpan - cameraPan) * smoothing * deltaTime;
+		
+		// Cockpit view
+		float tilt = -1.3f;
+		float radius = 0.2f;
 
-	float smoothing = 5.0f; 
-	cameraPan += (targetpan - cameraPan) * smoothing * deltaTime;
+		float verticalOffset = 2.0f;
+		float cameraY = tankPosition.y + verticalOffset;
+		float cameraZ = tankPosition.z;
+		float cameraX = tankPosition.x;
 
-	float tilt = -1.0f;
-	float radius = cameraDistance ;
+		Vector3f focusPoint(cameraX, cameraY, cameraZ);
 
-	cameraManip.setPanTiltRadius(cameraPan, tilt, radius);
-	cameraManip.setFocus(tankPosition);
+		cameraManip.setPanTiltRadius(cameraPan, tilt, radius);
+		cameraManip.setFocus(focusPoint);
+	} else {
+		// Calculate tanks orientation in world space
+		float targetpan = (tankRotation + turretBaseRotation) * (M_PI / 180.0f);
+		float smoothing = 5.0f; 
+		cameraPan += (targetpan - cameraPan) * smoothing * deltaTime;
+		
+		// Third person view
+		float radius = cameraDistance;
+		float tilt = -1.0f;
+
+		cameraManip.setPanTiltRadius(cameraPan, tilt, radius);
+		cameraManip.setFocus(tankPosition);
+	}	
 }
 
+/*--------------------------------------------------------// Steering Function //-------------------------------------------------*/
+void updateSteeringAngle(float deltaTime) {
+    const float maxSteeringAngle = 10.0f; // degrees
+    const float returnSpeed = 60.0f;      // degrees per second
 
+    // Turn right
+    if (turnDirection > 0.0f) {
+        steeringAngle += steeringSpeed * deltaTime;
+        if (steeringAngle > maxSteeringAngle) steeringAngle = maxSteeringAngle;
+    }
+    // Turn left
+    else if (turnDirection < 0.0f) {
+        steeringAngle -= steeringSpeed * deltaTime;
+        if (steeringAngle < -maxSteeringAngle) steeringAngle = -maxSteeringAngle;
+    }
+    // Return to center if no input
+    else {
+        if (steeringAngle > 0.0f) {
+            steeringAngle -= returnSpeed * deltaTime;
+            if (steeringAngle < 0.0f) steeringAngle = 0.0f;
+        } else if (steeringAngle < 0.0f) {
+            steeringAngle += returnSpeed * deltaTime;
+            if (steeringAngle > 0.0f) steeringAngle = 0.0f;
+        }
+    }
+
+	 // Clamp
+	if (steeringAngle > maxSteeringAngle) steeringAngle = maxSteeringAngle;
+	if (steeringAngle < -maxSteeringAngle) steeringAngle = -maxSteeringAngle;
+
+}
 
 /*----------------------------------------------------// KeyBoard Interaction //---------------------------------------------------*/
 void keyboard(unsigned char key, int x, int y)
@@ -763,21 +794,58 @@ void keyboard(unsigned char key, int x, int y)
 	// Quits program when esc is pressed
 	if (key == 27)	// esc key code
 	{
-		exit(0);
+		showMenu = !showMenu;
+		isPaused = showMenu;
 	}
+
+	if (showMenu) {
+		if (key == '1') {
+			selectedLevel = 1;
+			loadMaze("maze.txt", selectedLevel);
+			showMenu = false;
+			isPaused = false;
+		} else if (key == '2') {
+			selectedLevel = 2;
+			loadMaze("maze.txt", selectedLevel);
+			showMenu = false;
+			isPaused = false;
+		} else if (key == 'r' || key == 'R') {
+			loadMaze("maze.txt", currentLevel);
+			showMenu = false;
+			isPaused = false;
+			resetGame();
+
+		} else if (key == 'q' || key == 'Q') {
+			exit(0);
+		} 
+	} else if (!isPaused && !isGameOver) {
 	
-	if (key == 'n' || key == 'N')
-	{
-		switchLevel(1);
+		if (key == 'n' || key == 'N')
+		{
+			switchLevel(1);
+		}
+	
+		if (key == 'p' || key == 'P')
+		{
+			switchLevel(-1);
+		}
+
+		if (key == 'c' || key == 'C')
+		{
+			isFirstPerson = true;
+		}
+		if (key == 'v' || key == 'V')
+		{
+			isFirstPerson = false;
+		}
 	}
+		if (isGameOver && (key == 'r' || key == 'R')) {
+			resetGame();
+		}
 	
-	if (key == 'p' || key == 'P')
-	{
-		switchLevel(-1);
-	}	
-	
-    // Set key status
-    keyStates[key] = true;  
+    	// Set key status
+    	keyStates[key] = true;  
+		
 }
 
 // Handle key up situation
@@ -789,20 +857,19 @@ void keyUp(unsigned char key, int x, int y)
 /*---------------------------------------------------// HandleKeys Funuction //----------------------------------------------------*/
 void handleKeys()
 {
-
 	if (isfalling){
 		moveDirection = 0.0f;
 		turnDirection = 0.0f;
-
 		checkfall();
 		updateTankMovement(tankVelocity, tankRotation);
+		
 		return;
 	}
 
 	if(keyStates['w'])
     	{
 			moveDirection = 1.0f;
-    	} else if(keyStates['s']) {
+    	} else if (keyStates['s']) {
 			moveDirection = -1.0f;
     	} else {
 			moveDirection = 0.0f;
@@ -844,6 +911,7 @@ void handleKeys()
 	
 	updateTankMovement(tankVelocity, tankRotation);
 	checkfall();
+	
 }
 
 /*--------------------------------------------------------// Mouse Interaction //--------------------------------------------------*/
@@ -852,34 +920,17 @@ void mouse(int button, int state, int x, int y)
 	if (button == GLUT_LEFT_BUTTON) {
 		if (state == GLUT_DOWN) {
 			fireBall();
-		} //else if (state == GLUT_DOWN) {
-			//rotatingTurret = false;
-		//}
+		} 
 	}
-
-	if (button == GLUT_RIGHT_BUTTON) {
-		if (state == GLUT_DOWN) {
-			rotatingTurret= true;
-			//glutSetCursor(GLUT_CURSOR_NONE);
-		} else if (state == GLUT_UP) {
-			rotatingTurret = false;
-			//glutSetCursor(GLUT_CURSOR_INHERIT);
-		}
-	}
-
-    cameraManip.handleMouse(button, state,x,y);
     glutPostRedisplay(); 
 }
 
 // Mouse Interaction
 void motion(int x, int y)
 {
-	//if (!rotatingTurret) return;
-
 	if (x == screenWidth / 2 && y == screenHeight / 2)
 		return;
 
-    //if (rotatingTurret) {
         float deltaX = -(x - screenWidth / 2);
 		float dy = (screenHeight / 2 - y);
 
@@ -887,10 +938,6 @@ void motion(int x, int y)
 		
 	if (targetTurretRotation > 180.0f) targetTurretRotation -= 360.0f;
 	if (targetTurretRotation < -180.0f) targetTurretRotation += 360.0f;
-
-	//glutWarpPointer(screenWidth / 2, screenHeight / 2);
-		
-    //}
 }
 
 void updateTurretRotation() 
@@ -920,15 +967,15 @@ void specialKeyUp(int key, int x, int y)
 /*-------------------------------------------------------// Timer Function //------------------------------------------------------*/
 void Timer(int value)
 {
-
-	remainingTime -= 0.03f;	
-	
-	// Check if the time is up
-	if (remainingTime < 0)
-	{
-		remainingTime = 0;
-	}
-		
+	if (!isGameOver && !isPaused) {
+		remainingTime -= 0.01f;	
+		// Check if the time is up
+		if (remainingTime < 0)
+		{
+			remainingTime = 0;
+			isGameOver = true;
+		}
+	}	
 	// Update the coin rotation and bounce
 	coinRotationAngle += 2.0f;
 	
@@ -946,6 +993,131 @@ void Timer(int value)
 	glutTimerFunc(10,Timer, 0);
 }
 
+void drawTextBox(float x, float y, float width, float height, float alpha = 0.5f) {
+	glMatrixMode(GL_PROJECTION);
+	glPushMatrix();
+	glLoadIdentity();
+	gluOrtho2D(0, screenWidth, 0, screenHeight);
+
+	glMatrixMode(GL_MODELVIEW);
+	glPushMatrix();
+	glLoadIdentity();
+
+	glDisable(GL_TEXTURE_2D);
+	glEnable(GL_BLEND);
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+	glColor4f(0.0f, 0.0f, 0.0f, alpha);
+	glBegin(GL_QUADS);
+	glVertex2f(x, y);
+	glVertex2f(x + width, y);
+	glVertex2f(x + width, y + height);
+	glVertex2f(x, y + height);
+	glEnd();
+
+	glDisable(GL_BLEND);
+	glEnable(GL_TEXTURE_2D);
+
+	glPopMatrix();
+	glMatrixMode(GL_PROJECTION);
+	glPopMatrix();
+	glMatrixMode(GL_MODELVIEW);
+}
+
+void drawHUD() {
+    const int padding = 20;
+	const int extraPadding = 30;
+    const int charWidth = 8;
+    const int statusBoxHeight = 30;
+    const int helpBoxHeight = 25;
+
+    glMatrixMode(GL_PROJECTION);
+    glPushMatrix();
+    glLoadIdentity();
+    gluOrtho2D(0, screenWidth, 0, screenHeight);
+    glMatrixMode(GL_MODELVIEW);
+    glPushMatrix();
+    glLoadIdentity();
+
+    glDisable(GL_LIGHTING);
+    glDisable(GL_DEPTH_TEST);
+
+/*---------------------------------------------// Render Text //---------------------------------------------------------------*/
+    // === Top-Left: Level & Coin Status ===
+    std::string levelText = "Level: " + std::to_string(currentLevel);
+    std::string coinText = "Coins: " + std::to_string(coinsCollected) + "/" + std::to_string(totalCoins);
+    std::string statusText = levelText + "   " + coinText;
+    int statusWidth = charWidth * statusText.length();
+    drawTextBox(10, screenHeight - 40, statusWidth + 2 * padding, statusBoxHeight);
+    render2dText(statusText, 1.0f, 1.0f, 1.0f, 10 + padding, screenHeight - 28);
+
+    // === Top-Right: Time ===
+    std::string timeText = "Time: " + std::to_string(static_cast<int>(remainingTime)) + "s";
+    int timeWidth = charWidth * timeText.length();
+    drawTextBox(screenWidth - timeWidth - 2 * padding - 10, screenHeight - 40, timeWidth + 2 * padding, statusBoxHeight);
+    render2dText(timeText, 1.0f, 1.0f, 1.0f, screenWidth - timeWidth - padding - 10, screenHeight - 28);
+
+    // === Bottom-Left: Controls ===
+    std::string helpText = "WASD: Move  |  Mouse: Aim  |  LMB: Shoot | C: Cockpit View | V: Third-Person View";
+    int helpWidth = charWidth * helpText.length();
+    drawTextBox(10, 10, helpWidth + 3 * padding + extraPadding, helpBoxHeight);
+    render2dText(helpText, 1.0f, 1.0f, 1.0f, 10 + padding, 20);
+
+	if (isGameOver) {
+		std::string gameOverText = "GAME OVER";
+		std::string resetText = "Press R to reset";
+
+		int GamerOverWidth = 12 * gameOverText.length(); // adjust if needed for your font size
+		int resetWidth = 10 * resetText.length();
+		int centerX = screenWidth / 2;
+		int centerY = screenHeight / 2;
+		int boxWidth = std::max(GamerOverWidth, resetWidth) + 40;
+		int boxHeight = 70;
+	
+		drawTextBox(centerX - boxWidth / 2, centerY - 30, boxWidth, boxHeight, 0.6f);
+		render2dText(gameOverText, 1.0f, 0.0f, 0.0f, centerX - GamerOverWidth / 2, centerY + 10);
+		render2dText(resetText, 1.0f, 1.0f, 1.0f, centerX - resetWidth / 2 + 15, centerY - 15);
+	}
+
+	if (showMenu) {
+		std::string title = "PAUSED - Select Level";
+		std::string options =
+			"1: Level 1    2: Level 2\n"
+			"R: Restart	   Q: Quit    ESC: Resume";
+	
+			int boxWidth = 10 * options.length(); // Adjust if needed
+			int centerX = screenWidth / 2;
+			int centerY = screenHeight / 2;
+			
+			drawTextBox(centerX - boxWidth / 2 - 10, centerY - 20, boxWidth + 20, 90, 0.7f);
+			render2dText(title, 1.0f, 1.0f, 1.0f, centerX - title.length() * 6, centerY + 50);
+			render2dText("1: Level 1    2: Level 2", 0.8f, 0.8f, 0.8f, centerX - 110, centerY + 20);
+			render2dText("R: Restart    Q: Quit    ESC: Resume", 0.8f, 0.8f, 0.8f, centerX - 150, centerY - 10);
+	}
+	
+	
+    glEnable(GL_DEPTH_TEST);
+    glEnable(GL_LIGHTING);
+
+    glMatrixMode(GL_PROJECTION);
+    glPopMatrix();
+    glMatrixMode(GL_MODELVIEW);
+    glPopMatrix();
+}
+
+void resetGame() {
+	isGameOver = false;
+	remainingTime = 200;
+	coinsCollected = 0;
+	currentLevel = 1;
+	loadMaze("maze.txt", currentLevel);
+
+	// Reset tank position to the center of the maze
+	tankPosition.x = centerX;
+	tankPosition.z = centerZ;
+	tankY = 0.0f;
+}
+
 /*------------------------------------------------// Set Up Render 2d Text Function //---------------------------------------------*/
 void render2dText(std::string text, float r, float g, float b, float x, float y) 
 {
@@ -957,7 +1129,6 @@ void render2dText(std::string text, float r, float g, float b, float x, float y)
 		glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, text[i]);
 	}
 }	
-
 /*=================================================================================================================================*/
 /*--------------------------------------------------------------// END //----------------------------------------------------------*/
 /*=================================================================================================================================*/
