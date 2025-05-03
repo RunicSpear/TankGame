@@ -14,6 +14,7 @@
 #include <math.h>
 #include <string>
 #include <fstream>
+#include <map>
 
 /*---------------------------------------------------// Function Prototypes //-----------------------------------------------------*/
 bool initGL(int argc, char** argv);
@@ -158,10 +159,14 @@ GLuint crateTexture;
 GLuint coinTexture;
 GLuint tankTexture;
 GLuint ballTexture;
+GLuint donutTexture;
+GLuint shadowTexture;
 
 //Component Meshes
 Mesh crateMesh;			// Crate Mesh		                     
 Mesh coinMesh;			// Coin Mesh
+Mesh donutMesh;			// Donut Mesh
+Mesh shadowMesh;
 
 //Tank Mesh
 Mesh chassisMesh;		// Chassis Mesh
@@ -174,6 +179,8 @@ Mesh ballMesh;
 
 // Array of key states
 bool keyStates[256];
+
+std::map<std::pair<int, int>, int> donutFallTimers;
 
 struct Particle {
     Vector3f position;
@@ -303,6 +310,8 @@ int main(int argc, char** argv)
 	//Coin
 	coinMesh.loadOBJ("../models/cube.obj");
 	initTexture("../models/block.bmp", coinTexture);
+	shadowMesh.loadOBJ("../models/cube.obj");
+	initTexture("../models/shadow.bmp", shadowTexture);
 	
 	//Tank
 	chassisMesh.loadOBJ("../models/chassis.obj");
@@ -314,6 +323,9 @@ int main(int argc, char** argv)
 	// Ball
 	ballMesh.loadOBJ("../models/ball.obj");
 	initTexture("../models/ball.bmp", ballTexture);
+
+	donutMesh.loadOBJ("../models/cube.obj");
+	initTexture("../models/donut.bmp", donutTexture);
 
 	//Start main loop
 	glutMainLoop();
@@ -509,11 +521,15 @@ void display(void)
 /*-----------------------------------------------// Draw Maze Function //----------------------------------------------------------*/
 void DrawMaze()
 {
+
+	int tankRow = (int)((tankPosition.x + 1.0f) / 2.0f);
+    int tankCol = (int)((tankPosition.z + 1.0f) / 2.0f);
+
 	for(int i = 0; i < MAZE_HEIGHT; i++)
 	{
 		for( int j = 0; j < MAZE_WIDTH; j++)
 		{	
-			if(MAZE[i][j] >= 1)
+			if(MAZE[i][j] == 1 || MAZE[i][j] == 2)
 			{
 				// Apply Camera Manipluator to Set Model View Matrix on GPU
 				ModelViewMatrix.toIdentity();
@@ -537,17 +553,74 @@ void DrawMaze()
 			
 		    if(MAZE[i][j] == 2)
 			{
+				// Set up transformation matrix
 				Matrix4x4 m = cameraManip.apply(ModelViewMatrix);
-				// Set Colour after program is in use
-				glActiveTexture(GL_TEXTURE0);
-				glBindTexture(GL_TEXTURE_2D, coinTexture);
-				glUniform1i(TextureMapUniformLocation, 0);
+
+				// 1. Draw shadow
+				{
+					Matrix4x4 shadowMatrix = m;
+					shadowMatrix.translate(i * 2.0, 1.4f, j * 2.0); // Slightly above the floor
+					shadowMatrix.scale(0.3f, 0.01f, 0.3f);           // Flat and wide
+					shadowMatrix.rotate(coinRotationAngle, 0.0f, 1.0f, 0.0f);
+			 
+					glActiveTexture(GL_TEXTURE0);
+					glBindTexture(GL_TEXTURE_2D, shadowTexture); // Or shadow texture
+					glUniform1i(TextureMapUniformLocation, 0);
+			 
+					glUniformMatrix4fv(MVMatrixUniformLocation, 1, false, shadowMatrix.getPtr());
+					shadowMesh.Draw(vertexPositionAttribute, vertexNormalAttribute, vertexTexcoordAttribute);
+				}
+			 
+				// 2. Draw coin (bouncing)
 				float bounceHeight = 0.1f * sin(coinBounce);
-				m.translate(i*2.0, 2.0f + bounceHeight, j*2.0);  
+				m.translate(i * 2.0, 2.0f + bounceHeight, j * 2.0);
 				m.scale(0.3f, 0.3f, 0.3f);
 				m.rotate(coinRotationAngle, 0.0f, 1.0f, 0.0f);
 				glUniformMatrix4fv(MVMatrixUniformLocation, 1, false, m.getPtr());
+			 
+				glActiveTexture(GL_TEXTURE0);
+				glBindTexture(GL_TEXTURE_2D, coinTexture);
+				glUniform1i(TextureMapUniformLocation, 0);
 				coinMesh.Draw(vertexPositionAttribute, vertexNormalAttribute, vertexTexcoordAttribute);
+			}
+			
+			if (MAZE[i][j] == 3) {
+				Matrix4x4 m = cameraManip.apply(ModelViewMatrix);
+                glActiveTexture(GL_TEXTURE0);
+                glBindTexture(GL_TEXTURE_2D, donutTexture);
+                glUniform1i(TextureMapUniformLocation, 0);
+
+                std::pair<int, int> key = std::make_pair(i, j);
+                int fallFrame = donutFallTimers[key];
+
+                // If the tank is on this tile, start shaking/falling
+                if (tankRow == i && tankCol == j) {
+                    fallFrame++;
+                    donutFallTimers[key] = fallFrame;
+                } else if (fallFrame > 0) {
+                    fallFrame++;
+                    donutFallTimers[key] = fallFrame;
+                }
+
+                // Animate shaking
+                float shakeOffset = 0.0f;
+                float dropOffset = 0.0f;
+                if (fallFrame > 0 && fallFrame < 60) {
+                    shakeOffset = 0.1f * sin(fallFrame * 0.5f);
+                } else if (fallFrame >= 60) {
+                    dropOffset = -((fallFrame - 60) * 0.05f);
+                }
+
+                // After 100 frames, delete the tile
+                if (fallFrame >= 100) {
+                    MAZE[i][j] = 0;
+                    donutFallTimers.erase(key);
+                    continue; // skip drawing
+                }
+
+                m.translate(i * 2.0 + shakeOffset, dropOffset, j * 2.0);
+                glUniformMatrix4fv(MVMatrixUniformLocation, 1, false, m.getPtr());
+                donutMesh.Draw(vertexPositionAttribute, vertexNormalAttribute, vertexTexcoordAttribute);
 			}
 		}
 	}
@@ -874,8 +947,10 @@ void keyboard(unsigned char key, int x, int y)
 	// Quits program when esc is pressed
 	if (key == 27)	// esc key code
 	{
-		showMenu = !showMenu;
-		isPaused = showMenu;
+		if (!gameWon && !isGameOver && !mainMenu) {
+			showMenu = !showMenu;
+			isPaused = showMenu;
+		}
 	}
 
 	if (showMenu) {
@@ -920,18 +995,18 @@ void keyboard(unsigned char key, int x, int y)
 		} else if (key == '2') {
 			if (levelCompleted[0]) {
 				selectedLevel = 2;
-			loadMaze("maze.txt", selectedLevel);
-			showMenu = false;
-			isPaused = false;
-			mainMenu = false;
+				loadMaze("maze.txt", selectedLevel);
+				showMenu = false;
+				isPaused = false;
+				mainMenu = false;
 			}
 		} else if (key == '3') {
 			if (levelCompleted[0] && levelCompleted[1]) {
-			selectedLevel = 3;
-			loadMaze("maze.txt", selectedLevel);
-			showMenu = false;
-			isPaused = false;	
-			mainMenu = false;
+				selectedLevel = 3;
+				loadMaze("maze.txt", selectedLevel);
+				showMenu = false;
+				isPaused = false;	
+				mainMenu = false;
 			}
 		} else if (key == 'r' || key == 'R') {
 			loadMaze("maze.txt", currentLevel);
@@ -1107,16 +1182,20 @@ void specialKeyUp(int key, int x, int y)
 void Timer(int value)
 {
 	if (mainMenu == 0) {
-	if (!isGameOver && !isPaused) {
-		remainingTime -= 0.01f;	
-		// Check if the time is up
-		if (remainingTime < 0)
-		{
-			remainingTime = 0;
-			isGameOver = true;
+		if (!isGameOver) {
+			if (!isPaused) {
+				if (!gameWon) {
+					remainingTime -= 0.03f;	
+					// Check if the time is up
+					if (remainingTime < 0)
+					{
+						remainingTime = 0;
+						isGameOver = true;
+					}
+				}	
+			}		
 		}
-	}
-}
+	}	
 	// Update the coin rotation and bounce
 	coinRotationAngle += 2.0f;
 	
@@ -1217,6 +1296,7 @@ void drawHUD() {
 
 /*---------------------------------------------// Render Text //---------------------------------------------------------------*/
 if (mainMenu == 0) {
+	if (!gameWon){
     // === Top-Left: Level & Coin Status ===
     std::string levelText = "Level: " + std::to_string(currentLevel);
     std::string coinText = "Coins: " + std::to_string(coinsCollected) + "/" + std::to_string(totalCoins);
@@ -1236,6 +1316,7 @@ if (mainMenu == 0) {
     int helpWidth = charWidth * helpText.length();
     drawTextBox(10, 10, helpWidth + 3 * padding + extraPadding, helpBoxHeight, 1.0f, 1.0f, 1.0f, 0.8);
     render2dText(helpText, 1.0f, 1.0f, 1.0f, 10 + padding, 20);
+	}
 }
 	if (isGameOver) {
 		std::string gameOverText = "GAME OVER";
