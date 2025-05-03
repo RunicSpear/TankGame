@@ -1,0 +1,6 @@
+.qmake.stash
+.vscode/
+build/
+Assignment
+Makefile
+
