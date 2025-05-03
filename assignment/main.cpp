@@ -96,10 +96,12 @@ float wheelRotation = 0.0f;
 float steeringAngle = 0.0f;
 float tankY = 0.0f;
 float verticalVelocity = 0.0f;
-float steeringangle = 0.0f;
-float steeringSpeed = 5.0f;
+float steeringSpeed = 10.0f;
 float maxSteeringAngle = 30.0f;
+float wheelRadius = 0.001f;
+float wheelRotationRad = 0.0f;
 bool isfalling = false;
+
 
 // Jumping Variables
 bool isJumping = false;
@@ -111,6 +113,7 @@ const float initialJumpVelocity = 5.0f;
 float cameraDistance = 7.0f;
 float cameraPan = 0.0f;
 bool isFirstPerson = false;
+bool aiming = false;
 
 // Turret Controls
 float turretBaseRotation = 0.0f;
@@ -678,7 +681,7 @@ void DrawTank(float x, float y, float z)
 
 	/*-------------------------------------------------// Draw Front Wheeels //--------------------------------------------------------*/
 	Matrix4x4 frontWheelMatrix = m;
-	frontWheelMatrix.translate(0.0f, 0.1f, 0.0f);
+	frontWheelMatrix.translate(-0.1f, 1.0f, 2.2f);
 	frontWheelMatrix.rotate(steeringAngle, 0.0f, 1.0f, 0.0f);
 	frontWheelMatrix.rotate(wheelRotation, 1.0f, 0.0f, 0.0f);
 	glUniformMatrix4fv(MVMatrixUniformLocation, 1, false, frontWheelMatrix.getPtr());
@@ -686,9 +689,9 @@ void DrawTank(float x, float y, float z)
 
 	/*-------------------------------------------------// Draw Back Wheels //----------------------------------------------------------*/
 	Matrix4x4 backWheelMatrix = m;
-	// backWheelMatrix.rotate(wheelRotation, 1.0f, 0.0f, 0.0f);
-	backWheelMatrix.translate(0.0f, 0.0f, 0.0f);
-	frontWheelMatrix.rotate(wheelRotation, 1.0f, 0.0f, 0.0f);
+	backWheelMatrix.translate(-0.1f, 1.1f, -1.3f);
+	backWheelMatrix.rotate(-steeringAngle, 0.0f, 1.0f, 0.0f);
+	backWheelMatrix.rotate(wheelRotation, 1.0f, 0.0f, 0.0f);
 	glUniformMatrix4fv(MVMatrixUniformLocation, 1, false, backWheelMatrix.getPtr());
 	backWheelMesh.Draw(vertexPositionAttribute, vertexNormalAttribute, vertexTexcoordAttribute);
 }
@@ -892,6 +895,13 @@ void updateTankMovement(Vector3f &tankVelocity, float &tankAngle)
 	// Update tank Position
 	tankPosition = tankPosition + tankVelocity * deltaTime;
 
+	// Calculate rotation amount
+	wheelRotation += (moveSpeed * moveDirection * deltaTime) / wheelRadius;
+	wheelRotationRad = wheelRotation * (M_PI / 180.0f);
+
+	std::cout << "wheelRotation: " << wheelRotationRad << std::endl;
+
+
 	if (!isOnGround)
 	{
 		// Apply gravity
@@ -996,7 +1006,7 @@ void updateCameraPosition()
 /*--------------------------------------------------------// Steering Function //-------------------------------------------------*/
 void updateSteeringAngle(float deltaTime)
 {
-	const float maxSteeringAngle = 10.0f; // degrees
+	const float maxSteeringAngle = 15.0f; // degrees
 	const float returnSpeed = 60.0f;	  // degrees per second
 
 	// Turn right
@@ -1255,9 +1265,7 @@ void handleKeys()
 /*--------------------------------------------------------// Mouse Interaction //--------------------------------------------------*/
 void mouse(int button, int state, int x, int y)
 {
-	if (mainMenu)
-		return;
-	if (isPaused || isGameOver)
+	if (isPaused || isGameOver || mainMenu)
 		return;
 	if (button == GLUT_LEFT_BUTTON)
 	{
@@ -1266,15 +1274,26 @@ void mouse(int button, int state, int x, int y)
 			fireBall();
 		}
 	}
+
+	if (button == GLUT_RIGHT_BUTTON)
+	{
+		if (state == GLUT_DOWN)
+		{
+			aiming = true;
+		} else {
+			aiming = false;
+		}
+	}
+
 	glutPostRedisplay();
 }
 
 // Mouse Interaction
 void motion(int x, int y)
 {
-	if (mainMenu)
-		return;
-	if (isPaused)
+	if (!aiming) return;
+	if (aiming){
+	if (mainMenu || isPaused)
 		return;
 	if (x == screenWidth / 2 && y == screenHeight / 2)
 		return;
@@ -1288,6 +1307,7 @@ void motion(int x, int y)
 		targetTurretRotation -= 360.0f;
 	if (targetTurretRotation < -180.0f)
 		targetTurretRotation += 360.0f;
+}
 }
 
 void updateTurretRotation()
@@ -1452,7 +1472,7 @@ void drawHUD()
 			render2dText(timeText, 1.0f, 1.0f, 1.0f, screenWidth - timeWidth - padding - 10, screenHeight - 28);
 
 			// === Bottom-Left: Controls ===
-			std::string helpText = "WASD: Move  |  Mouse: Aim  |  LMB: Shoot | C: Cockpit View | V: Third-Person View";
+			std::string helpText = "WASD: Move  |  Mouse: Aim  |  LMB: Shoot |	RMB: Aim | C: Cockpit View | V: Third-Person View";
 			int helpWidth = charWidth * helpText.length();
 			drawTextBox(10, 10, helpWidth + 3 * padding + extraPadding, helpBoxHeight, 1.0f, 1.0f, 1.0f, 0.8);
 			render2dText(helpText, 1.0f, 1.0f, 1.0f, 10 + padding, 20);
