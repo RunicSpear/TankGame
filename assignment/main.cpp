@@ -42,6 +42,8 @@ void fireBall();
 void updateSteeringAngle(float deltaTime);
 void drawHUD();
 void resetGame();
+void updateParticles(float deltaTime);
+void drawParticles();
 				     
 // Screen size
 int screenWidth   	        = 1080;
@@ -54,7 +56,10 @@ float specularPower = 10.0f;
 float g = -9.81f;
 bool isPaused = false;
 bool showMenu = false;
-
+const int finalLevel = 3;
+bool gameWon = false;
+bool mainMenu = true;
+bool levelCompleted[3] = {false, false, false};
 
 //Coin Variables
 float coinRotationAngle = 0.0f;
@@ -170,15 +175,16 @@ Mesh ballMesh;
 // Array of key states
 bool keyStates[256];
 
-enum GameState {
-    MENU,
-    PLAYING,
-    LEVEL_SELECT
+struct Particle {
+    Vector3f position;
+    Vector3f velocity;
+    float life;
 };
 
-GameState currentGameState = MENU;
-
-
+const int MAX_PARTICLES = 100;
+std::vector<Particle> particles;
+bool spawnParticles = false;
+Vector3f particleOrigin;
 
 // Function to read through a text file to load the maze
 void loadMaze(const std::string& filename, int level)
@@ -195,6 +201,7 @@ void loadMaze(const std::string& filename, int level)
 	std::string line;
 	int currentLine = 0;
 	
+
 	while (currentLine < startLine && std::getline(file, line))
 	{
 		currentLine++;
@@ -202,10 +209,19 @@ void loadMaze(const std::string& filename, int level)
 
 	totalCoins = 0;
 
+	// Reload maze by first setting all blocks empty
+	for (int i = 0; i < MAZE_HEIGHT; i++) {
+		for (int j = 0; j < MAZE_WIDTH; j++) {
+			MAZE[i][j] = 0;
+		}
+	}	
+	
+	// Load new Maze from file
 	for (int i = 0; i < MAZE_HEIGHT; i++) {
 		for (int j = 0; j < MAZE_WIDTH; j++) {
 			file >> MAZE[i][j];
 
+			// Count total amount of coins in maze
 			if (MAZE[i][j] == 2) {
 				totalCoins++;
 			}
@@ -220,14 +236,20 @@ void loadMaze(const std::string& filename, int level)
 void switchLevel(int direction)
 {
 	currentLevel += direction;
-	
+
 	if (currentLevel < 1) {
-		currentLevel = 2;
+		currentLevel = 3;
 	}	
-	if (currentLevel > 2) {
-		currentLevel = 1;
+	if (currentLevel > 3) {
+		gameWon = true;
 	}
 	
+	if (currentLevel > finalLevel) {
+		gameWon = true;
+		currentLevel > finalLevel;
+		return;
+	}
+
 	// Reset Coins for new level
 	coinsCollected = 0;
 
@@ -276,11 +298,11 @@ int main(int argc, char** argv)
 	//Init Mesh Geometry
 	//Crate 
 	crateMesh.loadOBJ("../models/cube.obj");    
-	initTexture("../models/stone.bmp", crateTexture);
+	initTexture("../models/brick.bmp", crateTexture);
 	
 	//Coin
-	coinMesh.loadOBJ("../models/coin.obj");
-	initTexture("../models/coin.bmp", coinTexture);
+	coinMesh.loadOBJ("../models/cube.obj");
+	initTexture("../models/block.bmp", coinTexture);
 	
 	//Tank
 	chassisMesh.loadOBJ("../models/chassis.obj");
@@ -432,12 +454,14 @@ void display(void)
 	DrawTank(0.0f, 3.0f, 0.0f);
 	updateBallPosition();
 	DrawBall(0.0f, 6.0f, 0.0f);
+	drawParticles();
+	updateParticles(deltaTime);
 
 	updateSteeringAngle(deltaTime);
 	updateTurretRotation();
 	updateCameraPosition();
 
-	//glutSetCursor(GLUT_CURSOR_NONE);
+	glutSetCursor(GLUT_CURSOR_CROSSHAIR);
 
 	// Tank collecting coins
 	int tankTileX = (int)((tankPosition.x + 1.0f) / 2.0f);
@@ -453,6 +477,7 @@ void display(void)
 
 			// If all coins are collected switch level
 			if (coinsCollected == totalCoins) {
+				levelCompleted[currentLevel - 1] = true;
 				switchLevel(1);
 				coinsCollected = 0;
 			}
@@ -505,7 +530,7 @@ void DrawMaze()
 				glUniform1i(TextureMapUniformLocation, 0);
 
 				// First crate
-				m.translate(i*2.0, 0.0f, j*2.0);  
+				m.translate(i * 2.0, 0.0f, j * 2.0);  
 				glUniformMatrix4fv(MVMatrixUniformLocation, 1, false, m.getPtr());
 				crateMesh.Draw(vertexPositionAttribute, vertexNormalAttribute, vertexTexcoordAttribute);
 			}
@@ -519,7 +544,7 @@ void DrawMaze()
 				glUniform1i(TextureMapUniformLocation, 0);
 				float bounceHeight = 0.1f * sin(coinBounce);
 				m.translate(i*2.0, 2.0f + bounceHeight, j*2.0);  
-				m.scale(0.5f, 0.5f, 0.5f);
+				m.scale(0.3f, 0.3f, 0.3f);
 				m.rotate(coinRotationAngle, 0.0f, 1.0f, 0.0f);
 				glUniformMatrix4fv(MVMatrixUniformLocation, 1, false, m.getPtr());
 				coinMesh.Draw(vertexPositionAttribute, vertexNormalAttribute, vertexTexcoordAttribute);
@@ -624,15 +649,70 @@ void updateBallPosition() {
 
 			system("canberra-gtk-play -f coins.wav &");
 
+			// Spawn visual particles
+			spawnParticles = true;
+			particleOrigin = Vector3f(ballTileX, ballPosY, ballPosZ);
+			particles.clear();
+			for (int i = 0; i < MAX_PARTICLES; ++i) {
+				Particle p;
+				p.position = particleOrigin;
+				p.velocity = Vector3f(
+					(rand() % 100 - 50) / 50.0f,
+					(rand() % 100) / 50.0f,
+					(rand() % 100 - 50) / 50.0f
+				);
+				p.life = 1.0f; // Seconds
+				particles.push_back(p);
+			}
+
 			std::cout << "Coins Collected: " << coinsCollected << std::endl;
 
 			// If all coins are collected switch level
 			if (coinsCollected == totalCoins) {
+				levelCompleted[currentLevel - 1] = true;
 				switchLevel(1);
 				coinsCollected = 0;
 			}
 		}
 	}
+}
+
+void updateParticles(float deltaTime) {
+	if (!spawnParticles) return;
+
+	for (auto& p : particles) {
+		p.life -= deltaTime;
+		p.position = p.position + p.velocity * deltaTime;
+	}
+
+	bool anyAlive = false;
+	for (const auto& p : particles) {
+		if (p.life > 0.0f) {
+			anyAlive = true;
+			break;
+		}
+	}
+	if (!anyAlive) spawnParticles = false;
+}
+
+void drawParticles() {
+    if (!spawnParticles) return;
+
+	glDisable(GL_LIGHTING);
+	glEnable(GL_BLEND);
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+    glPointSize(4.0f);
+    glBegin(GL_POINTS);
+
+    for (const auto& p : particles) {
+        if (p.life > 0.0f) {
+            glColor4f(1.0f, 0.0f, 0.2f, p.life); // Fades with life
+            glVertex3f(p.position.x, p.position.y, p.position.z);
+        }
+    }
+    glEnd();
+    glColor4f(1, 1, 1, 1); // reset color
 }
 
 void fireBall() {
@@ -805,24 +885,71 @@ void keyboard(unsigned char key, int x, int y)
 			showMenu = false;
 			isPaused = false;
 		} else if (key == '2') {
-			selectedLevel = 2;
-			loadMaze("maze.txt", selectedLevel);
-			showMenu = false;
-			isPaused = false;
+			if (levelCompleted[0]) {
+				selectedLevel = 2;
+				loadMaze("maze.txt", selectedLevel);
+				showMenu = false;
+				isPaused = false;
+			}
+		} else if (key == '3') {
+			if (levelCompleted[0] && levelCompleted[1]) {
+				selectedLevel = 3;
+				loadMaze("maze.txt", selectedLevel);
+				showMenu = false;
+				isPaused = false;	
+			}
 		} else if (key == 'r' || key == 'R') {
 			loadMaze("maze.txt", currentLevel);
 			showMenu = false;
 			isPaused = false;
 			resetGame();
+			mainMenu = true;
 
 		} else if (key == 'q' || key == 'Q') {
 			exit(0);
 		} 
-	} else if (!isPaused && !isGameOver) {
 	
+	}
+	if (mainMenu) {
+		if (key == '1') {
+			selectedLevel = 1;
+			loadMaze("maze.txt", selectedLevel);
+			showMenu = false;
+			isPaused = false;
+			mainMenu = false;
+		} else if (key == '2') {
+			if (levelCompleted[0]) {
+				selectedLevel = 2;
+			loadMaze("maze.txt", selectedLevel);
+			showMenu = false;
+			isPaused = false;
+			mainMenu = false;
+			}
+		} else if (key == '3') {
+			if (levelCompleted[0] && levelCompleted[1]) {
+			selectedLevel = 3;
+			loadMaze("maze.txt", selectedLevel);
+			showMenu = false;
+			isPaused = false;	
+			mainMenu = false;
+			}
+		} else if (key == 'r' || key == 'R') {
+			loadMaze("maze.txt", currentLevel);
+			showMenu = false;
+			isPaused = false;
+			mainMenu = false;
+			resetGame();
+
+		} else if (key == 'q' || key == 'Q') {
+			exit(0);
+		}  
+	} else if (!isPaused && !isGameOver) {
+		
 		if (key == 'n' || key == 'N')
 		{
-			switchLevel(1);
+			if (currentLevel < 3) {
+				switchLevel(1);
+			}
 		}
 	
 		if (key == 'p' || key == 'P')
@@ -839,8 +966,15 @@ void keyboard(unsigned char key, int x, int y)
 			isFirstPerson = false;
 		}
 	}
-		if (isGameOver && (key == 'r' || key == 'R')) {
+		if ((isGameOver || gameWon) && (key == 'r' || key == 'R')) {
 			resetGame();
+			gameWon = false;
+			mainMenu = true;
+		}
+
+		if ((isGameOver || gameWon) && (key == 'q' || key == 'Q')) {
+			exit(0);
+			gameWon = false;
 		}
 	
     	// Set key status
@@ -865,6 +999,9 @@ void handleKeys()
 		
 		return;
 	}
+
+	if (mainMenu) return;
+	if (isPaused) return;
 
 	if(keyStates['w'])
     	{
@@ -917,6 +1054,8 @@ void handleKeys()
 /*--------------------------------------------------------// Mouse Interaction //--------------------------------------------------*/
 void mouse(int button, int state, int x, int y)
 {
+	if (mainMenu) return;
+	if (isPaused) return;
 	if (button == GLUT_LEFT_BUTTON) {
 		if (state == GLUT_DOWN) {
 			fireBall();
@@ -928,6 +1067,8 @@ void mouse(int button, int state, int x, int y)
 // Mouse Interaction
 void motion(int x, int y)
 {
+	if (mainMenu) return;
+	if (isPaused) return;
 	if (x == screenWidth / 2 && y == screenHeight / 2)
 		return;
 
@@ -950,9 +1091,7 @@ void updateTurretRotation()
 	if (fabs(angleDifference) > 0.01f) {
 		turretBaseRotation += angleDifference * 0.1f;
 	}
-
 }
-
 
 void specialKeyboard(int key, int x, int y) 
 {
@@ -967,6 +1106,7 @@ void specialKeyUp(int key, int x, int y)
 /*-------------------------------------------------------// Timer Function //------------------------------------------------------*/
 void Timer(int value)
 {
+	if (mainMenu == 0) {
 	if (!isGameOver && !isPaused) {
 		remainingTime -= 0.01f;	
 		// Check if the time is up
@@ -975,7 +1115,8 @@ void Timer(int value)
 			remainingTime = 0;
 			isGameOver = true;
 		}
-	}	
+	}
+}
 	// Update the coin rotation and bounce
 	coinRotationAngle += 2.0f;
 	
@@ -993,7 +1134,39 @@ void Timer(int value)
 	glutTimerFunc(10,Timer, 0);
 }
 
-void drawTextBox(float x, float y, float width, float height, float alpha = 0.5f) {
+void drawBorderBox(float x, float y, float width, float height, float r, float g, float b, float alpha = 1.0f, float lineWidth = 2.0f) {
+	glMatrixMode(GL_PROJECTION);
+	glPushMatrix();
+	glLoadIdentity();
+	gluOrtho2D(0, screenWidth, 0, screenHeight);
+
+	glMatrixMode(GL_MODELVIEW);
+	glPushMatrix();
+	glLoadIdentity();
+
+	glDisable(GL_TEXTURE_2D);
+	glEnable(GL_BLEND);
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+	glColor4f(r, g, b, alpha);
+	glLineWidth(lineWidth);
+	glBegin(GL_LINE_LOOP);
+	glVertex2f(x, y);
+	glVertex2f(x + width, y);
+	glVertex2f(x + width, y + height);
+	glVertex2f(x, y + height);
+	glEnd();
+
+	glDisable(GL_BLEND);
+	glEnable(GL_TEXTURE_2D);
+
+	glPopMatrix();
+	glMatrixMode(GL_PROJECTION);
+	glPopMatrix();
+	glMatrixMode(GL_MODELVIEW);
+}
+
+void drawTextBox(float x, float y, float width, float height, float r, float g, float b, float alpha = 0.5f) {
 	glMatrixMode(GL_PROJECTION);
 	glPushMatrix();
 	glLoadIdentity();
@@ -1043,26 +1216,27 @@ void drawHUD() {
     glDisable(GL_DEPTH_TEST);
 
 /*---------------------------------------------// Render Text //---------------------------------------------------------------*/
+if (mainMenu == 0) {
     // === Top-Left: Level & Coin Status ===
     std::string levelText = "Level: " + std::to_string(currentLevel);
     std::string coinText = "Coins: " + std::to_string(coinsCollected) + "/" + std::to_string(totalCoins);
     std::string statusText = levelText + "   " + coinText;
     int statusWidth = charWidth * statusText.length();
-    drawTextBox(10, screenHeight - 40, statusWidth + 2 * padding, statusBoxHeight);
+    drawTextBox(10, screenHeight - 40, statusWidth + 2 * padding, statusBoxHeight, 1.0f, 1.0f, 1.0f, 0.8);
     render2dText(statusText, 1.0f, 1.0f, 1.0f, 10 + padding, screenHeight - 28);
 
     // === Top-Right: Time ===
     std::string timeText = "Time: " + std::to_string(static_cast<int>(remainingTime)) + "s";
     int timeWidth = charWidth * timeText.length();
-    drawTextBox(screenWidth - timeWidth - 2 * padding - 10, screenHeight - 40, timeWidth + 2 * padding, statusBoxHeight);
+    drawTextBox(screenWidth - timeWidth - 2 * padding - 10, screenHeight - 40, timeWidth + 2 * padding, statusBoxHeight, 1.0f, 1.0f, 1.0f, 0.8);
     render2dText(timeText, 1.0f, 1.0f, 1.0f, screenWidth - timeWidth - padding - 10, screenHeight - 28);
 
     // === Bottom-Left: Controls ===
     std::string helpText = "WASD: Move  |  Mouse: Aim  |  LMB: Shoot | C: Cockpit View | V: Third-Person View";
     int helpWidth = charWidth * helpText.length();
-    drawTextBox(10, 10, helpWidth + 3 * padding + extraPadding, helpBoxHeight);
+    drawTextBox(10, 10, helpWidth + 3 * padding + extraPadding, helpBoxHeight, 1.0f, 1.0f, 1.0f, 0.8);
     render2dText(helpText, 1.0f, 1.0f, 1.0f, 10 + padding, 20);
-
+}
 	if (isGameOver) {
 		std::string gameOverText = "GAME OVER";
 		std::string resetText = "Press R to reset";
@@ -1074,28 +1248,82 @@ void drawHUD() {
 		int boxWidth = std::max(GamerOverWidth, resetWidth) + 40;
 		int boxHeight = 70;
 	
-		drawTextBox(centerX - boxWidth / 2, centerY - 30, boxWidth, boxHeight, 0.6f);
+		drawTextBox(centerX - boxWidth / 2, centerY - 30, boxWidth, boxHeight, 1.0f, 1.0f, 1.0f, 0.6f);
 		render2dText(gameOverText, 1.0f, 0.0f, 0.0f, centerX - GamerOverWidth / 2, centerY + 10);
 		render2dText(resetText, 1.0f, 1.0f, 1.0f, centerX - resetWidth / 2 + 15, centerY - 15);
 	}
 
 	if (showMenu) {
 		std::string title = "PAUSED - Select Level";
+
+		// Dynamic level text based on completion
+		std::string level2Text = levelCompleted[0] ? "2: Level 2 (unlocked)" : "2: Level 2 (locked)";
+		std::string level3Text = (levelCompleted[0] && levelCompleted[1]) ? "3: Level 3 (unlocked)" : "3: Level 3 (locked)";
+
 		std::string options =
-			"1: Level 1    2: Level 2\n"
+			"1: Level 1    " + level2Text + "     " + level3Text + "\n"
 			"R: Restart	   Q: Quit    ESC: Resume";
 	
 			int boxWidth = 10 * options.length(); // Adjust if needed
 			int centerX = screenWidth / 2;
 			int centerY = screenHeight / 2;
 			
-			drawTextBox(centerX - boxWidth / 2 - 10, centerY - 20, boxWidth + 20, 90, 0.7f);
-			render2dText(title, 1.0f, 1.0f, 1.0f, centerX - title.length() * 6, centerY + 50);
-			render2dText("1: Level 1    2: Level 2", 0.8f, 0.8f, 0.8f, centerX - 110, centerY + 20);
-			render2dText("R: Restart    Q: Quit    ESC: Resume", 0.8f, 0.8f, 0.8f, centerX - 150, centerY - 10);
+		drawTextBox(centerX - boxWidth / 2 - 10, centerY - 20, boxWidth, 90, 1.0f, 1.0f, 1.0f, 0.8);
+		render2dText(title, 1.0f, 1.0f, 1.0f, centerX - title.length() * 6, centerY + 50);
+		render2dText("1: Level 1", 0.8f, 0.8f, 0.8f, centerX - 230, centerY + 20);
+		render2dText(level2Text, 0.8f, 0.8f, 0.8f, centerX - 220 + 130, centerY + 20);
+		render2dText(level3Text, 0.8f, 0.8f, 0.8f, centerX - 160 + 260, centerY + 20);
+		render2dText("R: Restart    Q: Quit    ESC: Resume", 0.8f, 0.8f, 0.8f, centerX - 150, centerY - 10);
 	}
+
+	if (gameWon) {
+		std::string winText = "CONGRATULATIONS!";
+		std::string subText = "You completed all levels!";
+		std::string instructionText = "Press R to restart or Q to quit.";
 	
+		int winWidth = 400;
+		int boxHeight = 100;
+		int centerX = screenWidth / 2;
+		int centerY = screenHeight / 2;
+
+		// White border outline
+		drawBorderBox(centerX - winWidth / 2, centerY - 22, winWidth, boxHeight, 1.0f, 1.0f, 1.0f, 1.0f, 3.0f);
+
+		// Inner white filled box
+		drawTextBox(centerX - winWidth / 2, centerY - 22, winWidth, boxHeight, 1.0f, 1.0f, 1.0f, 0.8f);
+		render2dText(winText, 0.0f, 1.0f, 0.0f, centerX - winText.length() - 80, centerY + 50);
+		render2dText(subText, 1.0f, 1.0f, 1.0f, centerX - subText.length() - 80, centerY + 20);
+		render2dText(instructionText, 1.0f, 1.0f, 1.0f, centerX - instructionText.length() - 90, centerY);
+	}
+
+	if (mainMenu) {
+		std::string title = "Andreas Tank Game - Select Level";
+
+		int winWidth = 795;
+		int boxHeight = 95;
+		// Dynamic level text based on completion
+		std::string level2Text = levelCompleted[0] ? "2: Level 2 (unlocked)" : "2: Level 2 (locked)";
+		std::string level3Text = (levelCompleted[0] && levelCompleted[1]) ? "3: Level 3 (unlocked)" : "3: Level 3 (locked)";
+
+		std::string options =
+			"1: Level 1    " + level2Text + "     " + level3Text + "\n"
+			"R: Restart	   Q: Quit";
 	
+			int boxWidth = 10 * options.length(); // Adjust if needed
+			int centerX = screenWidth / 2;
+			int centerY = screenHeight / 2;
+
+		// White border outline
+		drawBorderBox(centerX - winWidth / 2 - 10, centerY - 22, winWidth, boxHeight, 1.0f, 1.0f, 1.0f, 1.0f, 3.0f);
+			
+		drawTextBox(centerX - boxWidth / 2 - 10, centerY - 20, boxWidth, 90, 1.0f, 1.0f, 1.0f, 0.8);
+		render2dText(title, 1.0f, 1.0f, 1.0f, centerX - title.length() - 120, centerY + 50);
+		render2dText("1: Level 1", 0.8f, 0.8f, 0.8f, centerX - 200, centerY + 20);
+		render2dText(level2Text, 0.8f, 0.8f, 0.8f, centerX - 220 + 130, centerY + 20);
+		render2dText(level3Text, 0.8f, 0.8f, 0.8f, centerX - 160 + 260, centerY + 20);
+		render2dText("R: Restart            Q: Quit Game", 0.8f, 0.8f, 0.8f, centerX - 120, centerY - 10);
+	}
+
     glEnable(GL_DEPTH_TEST);
     glEnable(GL_LIGHTING);
 
@@ -1103,13 +1331,15 @@ void drawHUD() {
     glPopMatrix();
     glMatrixMode(GL_MODELVIEW);
     glPopMatrix();
+
 }
 
-void resetGame() {
+void resetGame(){
 	isGameOver = false;
 	remainingTime = 200;
 	coinsCollected = 0;
 	currentLevel = 1;
+	mainMenu = true;
 	loadMaze("maze.txt", currentLevel);
 
 	// Reset tank position to the center of the maze
