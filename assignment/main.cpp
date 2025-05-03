@@ -1257,7 +1257,7 @@ void mouse(int button, int state, int x, int y)
 {
 	if (mainMenu)
 		return;
-	if (isPaused)
+	if (isPaused || isGameOver)
 		return;
 	if (button == GLUT_LEFT_BUTTON)
 	{
