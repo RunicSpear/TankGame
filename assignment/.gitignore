@@ -1,6 +1,9 @@
 .qmake.stash
 .vscode/
 build/
-Assignment
 Makefile
 
+Assignment
+Assignment.exe
+
+windows.config

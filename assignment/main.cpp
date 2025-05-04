@@ -2,8 +2,17 @@
 /*-------------------------------------------------------// Start //---------------------------------------------------------------*/
 /*=================================================================================================================================*/
 // Includes
+
+#ifdef __MINGW32__
+#include <windows.h>
+
+#include <GL/glew.h>
+#include <GL/freeglut.h>
+#else
 #include <GL/glew.h>
 #include <GL/glut.h>
+#endif
+
 #include <Shader.h>
 #include <Vector.h>
 #include <Matrix.h>
@@ -15,6 +24,8 @@
 #include <string>
 #include <fstream>
 #include <map>
+
+#include "./includes/sound.h"
 
 /*---------------------------------------------------// Function Prototypes //-----------------------------------------------------*/
 bool initGL(int argc, char **argv);
@@ -96,7 +107,6 @@ float wheelRotation = 0.0f;
 float steeringAngle = 0.0f;
 float tankY = 0.0f;
 float verticalVelocity = 0.0f;
-float steeringangle = 0.0f;
 float steeringSpeed = 5.0f;
 float maxSteeringAngle = 30.0f;
 bool isfalling = false;
@@ -302,6 +312,8 @@ void reshape(int width, int height)
 // Main Program Entry
 int main(int argc, char **argv)
 {
+	ATG::Sound::initialize();
+
 	// Load Maze
 	loadMaze("maze.txt", currentLevel);
 
@@ -497,7 +509,7 @@ void display(void)
 			MAZE[tankTileX][tankTileZ] = 1; // Remove coin
 			coinsCollected++;				// Increment counter
 
-			system("canberra-gtk-play -f coins.wav &");
+			ATG::Sound::playSoundOnce("coins.wav");
 
 			std::cout << "Coins collected: " << coinsCollected << std::endl;
 
@@ -678,17 +690,16 @@ void DrawTank(float x, float y, float z)
 
 	/*-------------------------------------------------// Draw Front Wheeels //--------------------------------------------------------*/
 	Matrix4x4 frontWheelMatrix = m;
-	frontWheelMatrix.translate(0.0f, 0.1f, 0.0f);
-	frontWheelMatrix.rotate(steeringAngle, 0.0f, 1.0f, 0.0f);
+	frontWheelMatrix.translate(0.0f, 1.0f, 2.2f);
+	frontWheelMatrix.rotate(steeringAngle + (turnDirection * 3), 0.0f, 1.0f, 0.0f);
 	frontWheelMatrix.rotate(wheelRotation, 1.0f, 0.0f, 0.0f);
 	glUniformMatrix4fv(MVMatrixUniformLocation, 1, false, frontWheelMatrix.getPtr());
 	frontWheelMesh.Draw(vertexPositionAttribute, vertexNormalAttribute, vertexTexcoordAttribute);
 
 	/*-------------------------------------------------// Draw Back Wheels //----------------------------------------------------------*/
 	Matrix4x4 backWheelMatrix = m;
-	// backWheelMatrix.rotate(wheelRotation, 1.0f, 0.0f, 0.0f);
-	backWheelMatrix.translate(0.0f, 0.0f, 0.0f);
-	frontWheelMatrix.rotate(wheelRotation, 1.0f, 0.0f, 0.0f);
+	backWheelMatrix.rotate(wheelRotation, 1.0f, 0.0f, 0.0f);
+	backWheelMatrix.translate(0.0f, 1.0f, -1.2f);
 	glUniformMatrix4fv(MVMatrixUniformLocation, 1, false, backWheelMatrix.getPtr());
 	backWheelMesh.Draw(vertexPositionAttribute, vertexNormalAttribute, vertexTexcoordAttribute);
 }
@@ -755,7 +766,7 @@ void updateBallPosition()
 			MAZE[ballTileX][ballTileZ] = 1; // Remove Coin
 			coinsCollected++;
 
-			system("canberra-gtk-play -f coins.wav &");
+			ATG::Sound::playSoundOnce("coins.wav");
 
 			// Spawn visual particles
 			spawnParticles = true;
