@@ -101,6 +101,7 @@ float maxSteeringAngle = 30.0f;
 float wheelRadius = 0.001f;
 float wheelRotationRad = 0.0f;
 bool isfalling = false;
+bool fallSoundPlayed = false;
 
 
 // Jumping Variables
@@ -265,6 +266,7 @@ void switchLevel(int direction)
 	if (currentLevel > 3)
 	{
 		gameWon = true;
+		system("canberra-gtk-play -f win.wav &");
 	}
 
 	if (currentLevel > finalLevel)
@@ -500,7 +502,7 @@ void display(void)
 			MAZE[tankTileX][tankTileZ] = 1; // Remove coin
 			coinsCollected++;				// Increment counter
 
-			system("canberra-gtk-play -f coins.wav &");
+			system("canberra-gtk-play -f coins1.wav &");
 
 			std::cout << "Coins collected: " << coinsCollected << std::endl;
 
@@ -509,6 +511,7 @@ void display(void)
 			{
 				levelCompleted[currentLevel - 1] = true;
 				switchLevel(1);
+				system("canberra-gtk-play -f victory.wav &");
 				coinsCollected = 0;
 			}
 		}
@@ -758,7 +761,7 @@ void updateBallPosition()
 			MAZE[ballTileX][ballTileZ] = 1; // Remove Coin
 			coinsCollected++;
 
-			system("canberra-gtk-play -f coins.wav &");
+			system("canberra-gtk-play -f coins1.wav &");
 
 			// Spawn visual particles
 			spawnParticles = true;
@@ -783,6 +786,7 @@ void updateBallPosition()
 			{
 				levelCompleted[currentLevel - 1] = true;
 				switchLevel(1);
+				system("canberra-gtk-play -f victory.wav &");
 				coinsCollected = 0;
 			}
 		}
@@ -899,8 +903,7 @@ void updateTankMovement(Vector3f &tankVelocity, float &tankAngle)
 	wheelRotation += (moveSpeed * moveDirection * deltaTime) / wheelRadius;
 	wheelRotationRad = wheelRotation * (M_PI / 180.0f);
 
-
-	if (!isOnGround)
+	if (!isOnGround) 
 	{
 		// Apply gravity
 		jumpVelocity += g * deltaTime;
@@ -955,6 +958,11 @@ void checkfall()
 		verticalVelocity += g * 10.0f * deltaTime;
 		tankPosition.y = verticalVelocity * deltaTime;
 		isGameOver = true;
+		if (!fallSoundPlayed)
+			{
+				system("canberra-gtk-play -f death1.wav &");
+				fallSoundPlayed = true;
+			}	
 	}
 }
 
@@ -1097,6 +1105,7 @@ void keyboard(unsigned char key, int x, int y)
 			isPaused = false;
 			resetGame();
 			mainMenu = true;
+			fallSoundPlayed = false;
 		}
 		else if (key == 'q' || key == 'Q')
 		{
@@ -1144,6 +1153,7 @@ void keyboard(unsigned char key, int x, int y)
 			showMenu = false;
 			isPaused = false;
 			mainMenu = false;
+			fallSoundPlayed = false;
 			resetGame();
 		}
 		else if (key == 'q' || key == 'Q')
@@ -1181,6 +1191,7 @@ void keyboard(unsigned char key, int x, int y)
 		resetGame();
 		gameWon = false;
 		mainMenu = true;
+		fallSoundPlayed = false;
 	}
 
 	if ((isGameOver || gameWon) && (key == 'q' || key == 'Q'))
@@ -1198,6 +1209,7 @@ void keyUp(unsigned char key, int x, int y)
 {
 	keyStates[key] = false;
 }
+
 
 /*---------------------------------------------------// HandleKeys Funuction //----------------------------------------------------*/
 void handleKeys()
@@ -1259,6 +1271,7 @@ void handleKeys()
 			isJumping = true;
 			isOnGround = false;
 			jumpVelocity = initialJumpVelocity;
+			system("canberra-gtk-play -f jump1.wav &");
 		}
 	}
 
@@ -1276,6 +1289,7 @@ void mouse(int button, int state, int x, int y)
 		if (state == GLUT_DOWN)
 		{
 			fireBall();
+			system("canberra-gtk-play -f explode.wav &");
 		}
 	}
 
