@@ -275,7 +275,7 @@ void switchLevel(int direction)
 	}
 
 	// Reset Coins for new level
-	coinsCollected = 0;
+	coinsCollected = 0; 
 
 	// Reset tank position to the center of the maze
 	tankPosition.x = centerX;
@@ -899,8 +899,6 @@ void updateTankMovement(Vector3f &tankVelocity, float &tankAngle)
 	wheelRotation += (moveSpeed * moveDirection * deltaTime) / wheelRadius;
 	wheelRotationRad = wheelRotation * (M_PI / 180.0f);
 
-	std::cout << "wheelRotation: " << wheelRotationRad << std::endl;
-
 
 	if (!isOnGround)
 	{
@@ -1065,6 +1063,7 @@ void keyboard(unsigned char key, int x, int y)
 		if (key == '1')
 		{
 			selectedLevel = 1;
+			currentLevel = 1;
 			loadMaze("maze.txt", selectedLevel);
 			showMenu = false;
 			isPaused = false;
@@ -1074,6 +1073,7 @@ void keyboard(unsigned char key, int x, int y)
 			if (levelCompleted[0])
 			{
 				selectedLevel = 2;
+				currentLevel = 2;
 				loadMaze("maze.txt", selectedLevel);
 				showMenu = false;
 				isPaused = false;
@@ -1084,6 +1084,7 @@ void keyboard(unsigned char key, int x, int y)
 			if (levelCompleted[0] && levelCompleted[1])
 			{
 				selectedLevel = 3;
+				currentLevel = 3;
 				loadMaze("maze.txt", selectedLevel);
 				showMenu = false;
 				isPaused = false;
@@ -1107,6 +1108,7 @@ void keyboard(unsigned char key, int x, int y)
 		if (key == '1')
 		{
 			selectedLevel = 1;
+			currentLevel = 1;
 			loadMaze("maze.txt", selectedLevel);
 			showMenu = false;
 			isPaused = false;
@@ -1117,6 +1119,7 @@ void keyboard(unsigned char key, int x, int y)
 			if (levelCompleted[0])
 			{
 				selectedLevel = 2;
+				currentLevel = 2;
 				loadMaze("maze.txt", selectedLevel);
 				showMenu = false;
 				isPaused = false;
@@ -1128,6 +1131,7 @@ void keyboard(unsigned char key, int x, int y)
 			if (levelCompleted[0] && levelCompleted[1])
 			{
 				selectedLevel = 3;
+				currentLevel = 3;
 				loadMaze("maze.txt", selectedLevel);
 				showMenu = false;
 				isPaused = false;
