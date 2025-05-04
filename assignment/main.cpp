@@ -369,7 +369,7 @@ bool initGL(int argc, char **argv)
 	glutInitWindowPosition(200, 200);
 
 	// Create Window
-	glutCreateWindow("Tank Assignment");
+	glutCreateWindow("Andreas Tank Game :)");
 
 	// Init GLEW
 	if (glewInit() != GLEW_OK)
