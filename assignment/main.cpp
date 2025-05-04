@@ -107,9 +107,13 @@ float wheelRotation = 0.0f;
 float steeringAngle = 0.0f;
 float tankY = 0.0f;
 float verticalVelocity = 0.0f;
-float steeringSpeed = 5.0f;
+float steeringSpeed = 10.0f;
 float maxSteeringAngle = 30.0f;
+float wheelRadius = 0.001f;
+float wheelRotationRad = 0.0f;
 bool isfalling = false;
+bool fallSoundPlayed = false;
+
 
 // Jumping Variables
 bool isJumping = false;
@@ -121,6 +125,7 @@ const float initialJumpVelocity = 5.0f;
 float cameraDistance = 7.0f;
 float cameraPan = 0.0f;
 bool isFirstPerson = false;
+bool aiming = false;
 
 // Turret Controls
 float turretBaseRotation = 0.0f;
@@ -272,6 +277,7 @@ void switchLevel(int direction)
 	if (currentLevel > 3)
 	{
 		gameWon = true;
+		system("canberra-gtk-play -f win.wav &");
 	}
 
 	if (currentLevel > finalLevel)
@@ -282,7 +288,7 @@ void switchLevel(int direction)
 	}
 
 	// Reset Coins for new level
-	coinsCollected = 0;
+	coinsCollected = 0; 
 
 	// Reset tank position to the center of the maze
 	tankPosition.x = centerX;
@@ -378,7 +384,7 @@ bool initGL(int argc, char **argv)
 	glutInitWindowPosition(200, 200);
 
 	// Create Window
-	glutCreateWindow("Tank Assignment");
+	glutCreateWindow("Andreas Tank Game :)");
 
 	// Init GLEW
 	if (glewInit() != GLEW_OK)
@@ -509,7 +515,7 @@ void display(void)
 			MAZE[tankTileX][tankTileZ] = 1; // Remove coin
 			coinsCollected++;				// Increment counter
 
-			ATG::Sound::playSoundOnce("coins.wav");
+			ATG::Sound::playSoundOnce("coins1.wav");
 
 			std::cout << "Coins collected: " << coinsCollected << std::endl;
 
@@ -518,6 +524,7 @@ void display(void)
 			{
 				levelCompleted[currentLevel - 1] = true;
 				switchLevel(1);
+				system("canberra-gtk-play -f victory.wav &");
 				coinsCollected = 0;
 			}
 		}
@@ -690,16 +697,17 @@ void DrawTank(float x, float y, float z)
 
 	/*-------------------------------------------------// Draw Front Wheeels //--------------------------------------------------------*/
 	Matrix4x4 frontWheelMatrix = m;
-	frontWheelMatrix.translate(0.0f, 1.0f, 2.2f);
-	frontWheelMatrix.rotate(steeringAngle + (turnDirection * 3), 0.0f, 1.0f, 0.0f);
+	frontWheelMatrix.translate(-0.1f, 1.0f, 2.2f);
+	frontWheelMatrix.rotate(steeringAngle, 0.0f, 1.0f, 0.0f);
 	frontWheelMatrix.rotate(wheelRotation, 1.0f, 0.0f, 0.0f);
 	glUniformMatrix4fv(MVMatrixUniformLocation, 1, false, frontWheelMatrix.getPtr());
 	frontWheelMesh.Draw(vertexPositionAttribute, vertexNormalAttribute, vertexTexcoordAttribute);
 
 	/*-------------------------------------------------// Draw Back Wheels //----------------------------------------------------------*/
 	Matrix4x4 backWheelMatrix = m;
+	backWheelMatrix.translate(-0.1f, 1.1f, -1.3f);
+	backWheelMatrix.rotate(-steeringAngle, 0.0f, 1.0f, 0.0f);
 	backWheelMatrix.rotate(wheelRotation, 1.0f, 0.0f, 0.0f);
-	backWheelMatrix.translate(0.0f, 1.0f, -1.2f);
 	glUniformMatrix4fv(MVMatrixUniformLocation, 1, false, backWheelMatrix.getPtr());
 	backWheelMesh.Draw(vertexPositionAttribute, vertexNormalAttribute, vertexTexcoordAttribute);
 }
@@ -766,7 +774,7 @@ void updateBallPosition()
 			MAZE[ballTileX][ballTileZ] = 1; // Remove Coin
 			coinsCollected++;
 
-			ATG::Sound::playSoundOnce("coins.wav");
+			ATG::Sound::playSoundOnce("coins1.wav");
 
 			// Spawn visual particles
 			spawnParticles = true;
@@ -791,6 +799,7 @@ void updateBallPosition()
 			{
 				levelCompleted[currentLevel - 1] = true;
 				switchLevel(1);
+				system("canberra-gtk-play -f victory.wav &");
 				coinsCollected = 0;
 			}
 		}
@@ -903,7 +912,11 @@ void updateTankMovement(Vector3f &tankVelocity, float &tankAngle)
 	// Update tank Position
 	tankPosition = tankPosition + tankVelocity * deltaTime;
 
-	if (!isOnGround)
+	// Calculate rotation amount
+	wheelRotation += (moveSpeed * moveDirection * deltaTime) / wheelRadius;
+	wheelRotationRad = wheelRotation * (M_PI / 180.0f);
+
+	if (!isOnGround) 
 	{
 		// Apply gravity
 		jumpVelocity += g * deltaTime;
@@ -958,6 +971,11 @@ void checkfall()
 		verticalVelocity += g * 10.0f * deltaTime;
 		tankPosition.y = verticalVelocity * deltaTime;
 		isGameOver = true;
+		if (!fallSoundPlayed)
+			{
+				system("canberra-gtk-play -f death1.wav &");
+				fallSoundPlayed = true;
+			}	
 	}
 }
 
@@ -1007,7 +1025,7 @@ void updateCameraPosition()
 /*--------------------------------------------------------// Steering Function //-------------------------------------------------*/
 void updateSteeringAngle(float deltaTime)
 {
-	const float maxSteeringAngle = 10.0f; // degrees
+	const float maxSteeringAngle = 15.0f; // degrees
 	const float returnSpeed = 60.0f;	  // degrees per second
 
 	// Turn right
@@ -1066,6 +1084,7 @@ void keyboard(unsigned char key, int x, int y)
 		if (key == '1')
 		{
 			selectedLevel = 1;
+			currentLevel = 1;
 			loadMaze("maze.txt", selectedLevel);
 			showMenu = false;
 			isPaused = false;
@@ -1075,6 +1094,7 @@ void keyboard(unsigned char key, int x, int y)
 			if (levelCompleted[0])
 			{
 				selectedLevel = 2;
+				currentLevel = 2;
 				loadMaze("maze.txt", selectedLevel);
 				showMenu = false;
 				isPaused = false;
@@ -1085,6 +1105,7 @@ void keyboard(unsigned char key, int x, int y)
 			if (levelCompleted[0] && levelCompleted[1])
 			{
 				selectedLevel = 3;
+				currentLevel = 3;
 				loadMaze("maze.txt", selectedLevel);
 				showMenu = false;
 				isPaused = false;
@@ -1097,6 +1118,7 @@ void keyboard(unsigned char key, int x, int y)
 			isPaused = false;
 			resetGame();
 			mainMenu = true;
+			fallSoundPlayed = false;
 		}
 		else if (key == 'q' || key == 'Q')
 		{
@@ -1108,6 +1130,7 @@ void keyboard(unsigned char key, int x, int y)
 		if (key == '1')
 		{
 			selectedLevel = 1;
+			currentLevel = 1;
 			loadMaze("maze.txt", selectedLevel);
 			showMenu = false;
 			isPaused = false;
@@ -1118,6 +1141,7 @@ void keyboard(unsigned char key, int x, int y)
 			if (levelCompleted[0])
 			{
 				selectedLevel = 2;
+				currentLevel = 2;
 				loadMaze("maze.txt", selectedLevel);
 				showMenu = false;
 				isPaused = false;
@@ -1129,6 +1153,7 @@ void keyboard(unsigned char key, int x, int y)
 			if (levelCompleted[0] && levelCompleted[1])
 			{
 				selectedLevel = 3;
+				currentLevel = 3;
 				loadMaze("maze.txt", selectedLevel);
 				showMenu = false;
 				isPaused = false;
@@ -1141,6 +1166,7 @@ void keyboard(unsigned char key, int x, int y)
 			showMenu = false;
 			isPaused = false;
 			mainMenu = false;
+			fallSoundPlayed = false;
 			resetGame();
 		}
 		else if (key == 'q' || key == 'Q')
@@ -1178,6 +1204,7 @@ void keyboard(unsigned char key, int x, int y)
 		resetGame();
 		gameWon = false;
 		mainMenu = true;
+		fallSoundPlayed = false;
 	}
 
 	if ((isGameOver || gameWon) && (key == 'q' || key == 'Q'))
@@ -1195,6 +1222,7 @@ void keyUp(unsigned char key, int x, int y)
 {
 	keyStates[key] = false;
 }
+
 
 /*---------------------------------------------------// HandleKeys Funuction //----------------------------------------------------*/
 void handleKeys()
@@ -1256,6 +1284,7 @@ void handleKeys()
 			isJumping = true;
 			isOnGround = false;
 			jumpVelocity = initialJumpVelocity;
+			system("canberra-gtk-play -f jump1.wav &");
 		}
 	}
 
@@ -1266,26 +1295,36 @@ void handleKeys()
 /*--------------------------------------------------------// Mouse Interaction //--------------------------------------------------*/
 void mouse(int button, int state, int x, int y)
 {
-	if (mainMenu)
-		return;
-	if (isPaused || isGameOver)
+	if (isPaused || isGameOver || mainMenu)
 		return;
 	if (button == GLUT_LEFT_BUTTON)
 	{
 		if (state == GLUT_DOWN)
 		{
 			fireBall();
+			system("canberra-gtk-play -f explode.wav &");
 		}
 	}
+
+	if (button == GLUT_RIGHT_BUTTON)
+	{
+		if (state == GLUT_DOWN)
+		{
+			aiming = true;
+		} else {
+			aiming = false;
+		}
+	}
+
 	glutPostRedisplay();
 }
 
 // Mouse Interaction
 void motion(int x, int y)
 {
-	if (mainMenu)
-		return;
-	if (isPaused)
+	if (!aiming) return;
+	if (aiming){
+	if (mainMenu || isPaused)
 		return;
 	if (x == screenWidth / 2 && y == screenHeight / 2)
 		return;
@@ -1299,6 +1338,7 @@ void motion(int x, int y)
 		targetTurretRotation -= 360.0f;
 	if (targetTurretRotation < -180.0f)
 		targetTurretRotation += 360.0f;
+}
 }
 
 void updateTurretRotation()
@@ -1463,7 +1503,7 @@ void drawHUD()
 			render2dText(timeText, 1.0f, 1.0f, 1.0f, screenWidth - timeWidth - padding - 10, screenHeight - 28);
 
 			// === Bottom-Left: Controls ===
-			std::string helpText = "WASD: Move  |  Mouse: Aim  |  LMB: Shoot | C: Cockpit View | V: Third-Person View";
+			std::string helpText = "WASD: Move  |  Mouse: Aim  |  LMB: Shoot |	RMB: Aim | C: Cockpit View | V: Third-Person View";
 			int helpWidth = charWidth * helpText.length();
 			drawTextBox(10, 10, helpWidth + 3 * padding + extraPadding, helpBoxHeight, 1.0f, 1.0f, 1.0f, 0.8);
 			render2dText(helpText, 1.0f, 1.0f, 1.0f, 10 + padding, 20);
