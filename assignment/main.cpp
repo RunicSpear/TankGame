@@ -67,8 +67,9 @@ int screenHeight = 1080;
 // Environment / Game State
 float g = -9.81f;
 float specularPower = 10.0f;
-float remainingTime = 100.0f;
+float remainingTime = 200.0f;
 float flashAlpha = 1.0f;
+float brightness = 1.0f;
 
 bool flashIncreasing = false;
 bool warningPlayed = false;
@@ -78,6 +79,7 @@ bool mainMenu = true;
 bool gameWon = false;
 bool isGameOver = false;
 bool LowTimeWarning = false;
+bool levelComplete = false;
 
 const int finalLevel = 3;
 int currentLevel = 1;
@@ -427,27 +429,24 @@ void loadMaze(const std::string &filename, int level)
 /*------------------------------------------------------// Switching Levels Function //--------------------------------------------*/
 void switchLevel(int direction)
 {
-	// Increment or decrement the current level
-	currentLevel += direction;
+		// Trigger win state if player advances past the final level
+		if (currentLevel == finalLevel)
+		{
+			gameWon = true;
+			levelComplete = false;
+			std::cout << "Game Won" << std::endl;
+			system("canberra-gtk-play -f smb_world_clear.wav &"); // Play win sound
+			return;
+		}
 
-	// Wrap around to the last level if going below level 1
-	if (currentLevel < 1)
-	{
-		currentLevel = 3;
-	}
+		// Increment or decrement the current level
+		currentLevel += direction;
 
-	// Trigger win state if player advances past the final level
-	if (currentLevel > 3)
-	{
-		gameWon = true;
-		system("canberra-gtk-play -f smb_world_clear.wav &"); // Play win sound
-	}
-
-	if (currentLevel > finalLevel)
-	{
-		gameWon = true;
-		return;
-	}
+		// Wrap around to the last level if going below level 1
+		if (currentLevel < 1)
+		{
+			currentLevel = 3;
+		}
 
 	// Reset Coin counter for new level
 	coinsCollected = 0;
@@ -458,7 +457,7 @@ void switchLevel(int direction)
 	tankPosition.y = 0.0f;
 
 	// Reset Time Remaining for new level
-	remainingTime = 100;
+	remainingTime = 200;
 
 	// Load maze data for the new level
 	loadMaze("maze.txt", currentLevel);
@@ -471,9 +470,9 @@ void resetGame()
 {
 	// Reset level state
 	isGameOver = false;
-	remainingTime = 100;
+	remainingTime = 200;
 	coinsCollected = 0;
-	//currentLevel = 1;
+	// currentLevel = 1;
 	mainMenu = true;
 	fallRotation = 0.0f;
 	loadMaze("maze.txt", currentLevel);
@@ -496,6 +495,19 @@ void keyboard(unsigned char key, int x, int y)
 		{
 			showMenu = !showMenu;
 			isPaused = showMenu;
+		}
+	}
+
+	if (key == 'i' || key == 'I') {
+		brightness += 0.2f;
+		if (brightness > 3.0f) {
+			brightness = 3.0f; // clamp max
+		}
+	}
+	if (key == 'u' || key == 'U') {
+		brightness -= 0.2f;
+		if (brightness < 0.0f) {
+			brightness = 0.0f; // Clamp min
 		}
 	}
 
@@ -542,7 +554,7 @@ void keyboard(unsigned char key, int x, int y)
 			showMenu = false;
 			isPaused = false;
 			resetGame();
-			//mainMenu = true;
+			// mainMenu = true;
 			fallSoundPlayed = false;
 		}
 		// Quit the game
@@ -613,13 +625,15 @@ void keyboard(unsigned char key, int x, int y)
 	else if (!isPaused && !isGameOver)
 	{
 		// Next level
-		if (key == 'n' || key == 'N')
+		if ((key == 'n' || key == 'N') && levelComplete && currentLevel < 3 )
 		{
 			if (currentLevel < 3)
 			{
 				switchLevel(1);
-			}
+			}	
+			levelComplete = false;
 		}
+
 		// Previous level
 		if (key == 'p' || key == 'P')
 		{
@@ -643,7 +657,8 @@ void keyboard(unsigned char key, int x, int y)
 	{
 		resetGame();
 		gameWon = false;
-		//mainMenu = true;
+		levelComplete = false;
+		// mainMenu = true;
 		fallSoundPlayed = false;
 	}
 	// Quit game
@@ -753,11 +768,9 @@ void handleKeys()
 	}
 
 	// Do not handle input if in the main menu or game is paused
-	if (mainMenu)
+	if (mainMenu || isPaused || isGameOver)
 		return;
-	if (isPaused)
-		return;
-	if (isGameOver)
+	if (levelComplete)
 		return;
 
 	// Handle forward/backward movement (W/S keys)
@@ -822,10 +835,10 @@ void handleKeys()
 void Timer(int value)
 {
 	// Only update time and game state if not in menu, paused, gamer over, or game won
-	if (mainMenu == 0 && !isGameOver && !isPaused && !gameWon)
+	if (mainMenu == 0 && !isGameOver && !isPaused && !gameWon && !levelComplete)
 	{
 		float previousTime = remainingTime;
-		remainingTime -= 0.02f; // Decrease remaining time
+		remainingTime -= 0.01f; // Decrease remaining time
 
 		// If time runs out, trigger game over
 		if (remainingTime < 0)
@@ -835,41 +848,42 @@ void Timer(int value)
 			system("canberra-gtk-play -f smb_gameover.wav &");
 		}
 
-		if (!warningPlayed  && remainingTime <= 10.0f)
+		if (!warningPlayed && remainingTime <= 100.0f)
 		{
 			std::cout << "Play warning sound";
 			system("canberra-gtk-play -f smb_warning.wav &");
 			warningPlayed = true;
 			LowTimeWarning = true;
-		} else if (remainingTime <= 6.0f){
+		}
+		else if (remainingTime <= 6.0f)
+		{
 			LowTimeWarning = false;
 		}
 	}
 
 	if (LowTimeWarning)
-{
-    if (flashIncreasing)
-        flashAlpha += 0.05f;
-    else
-        flashAlpha -= 0.05f;
+	{
+		if (flashIncreasing)
+			flashAlpha += 0.05f;
+		else
+			flashAlpha -= 0.05f;
 
-    if (flashAlpha <= 0.2f)
-    {
-        flashAlpha = 0.2f;
-        flashIncreasing = true;
-    }
-    else if (flashAlpha >= 1.0f)
-    {
-        flashAlpha = 1.0f;
-        flashIncreasing = false;
-    }
-}
-else
-{
-    flashAlpha = 1.0f;
-    flashIncreasing = false;
-}
-
+		if (flashAlpha <= 0.2f)
+		{
+			flashAlpha = 0.2f;
+			flashIncreasing = true;
+		}
+		else if (flashAlpha >= 1.0f)
+		{
+			flashAlpha = 1.0f;
+			flashIncreasing = false;
+		}
+	}
+	else
+	{
+		flashAlpha = 1.0f;
+		flashIncreasing = false;
+	}
 
 	// Update the coin animmation:
 	// Rotate the coin for visual spinning effect
@@ -1081,14 +1095,14 @@ void updateBallPosition()
 	{
 		float t = (ballLifeTime - gravityDelay);
 		float easedGravity = g * (1.0f - expf(-3.0f * t)); // Smooth gravity acceleration
-		verticalVelocity += easedGravity * 100.0f * deltaTime;
+		verticalVelocity += easedGravity * 30.0f * deltaTime;
 	}
 
 	// Update the vertical position
 	ballPosY += verticalVelocity * deltaTime;
 
 	// If the ball hits the ground deactivate it
-	if (ballPosY <= 0.0f)
+	if (ballPosY <= 0.9f)
 	{
 		ballPosY = 0.0f;
 		ballActive = false;
@@ -1133,7 +1147,13 @@ void updateBallPosition()
 			if (coinsCollected == totalCoins)
 			{
 				levelCompleted[currentLevel - 1] = true;
-				switchLevel(1); // Load next level
+				levelComplete = true;
+
+				if (currentLevel == 3) {
+					gameWon = true;
+					system("canberra-gtk-play -f smb_world_clear.wav &"); // Play win sound
+				}
+				// switchLevel(1); // Load next level
 				if (currentLevel < 3)
 				{
 					system("canberra-gtk-play -f smb_stage_clear.wav &"); // Victory sound
@@ -1286,6 +1306,9 @@ void display(void)
 	// Use shader
 	glUseProgram(shaderProgramID);
 
+	glUseProgram(shaderProgramID);
+	glUniform1f(glGetUniformLocation(shaderProgramID, "brightness"), brightness);
+
 	// Projection Matrix - Perspective Projection
 	ProjectionMatrix.perspective(90, 1.0, 0.0001, 100.0);
 
@@ -1340,7 +1363,12 @@ void display(void)
 			if (coinsCollected == totalCoins)
 			{
 				levelCompleted[currentLevel - 1] = true; // Set level as completed
-				switchLevel(1);
+				levelComplete = true;
+				if (currentLevel == 3) {
+					gameWon = true;
+					system("canberra-gtk-play -f smb_world_clear.wav &"); // Play win sound
+				}
+				// switchLevel(1);
 				if (currentLevel < 3)
 				{
 					system("canberra-gtk-play -f smb_stage_clear.wav &"); // Play  level victory sound
@@ -1749,7 +1777,7 @@ void drawHUD()
 		if (!gameWon)
 		{
 			std::string gameOverText = "GAME OVER";
-			std::string resetText = "Press R to reset";
+			std::string resetText = "Press R to Reset or Q to Quit";
 
 			int GamerOverWidth = 12 * gameOverText.length(); // adjust if needed for your font size
 			int resetWidth = 10 * resetText.length();
@@ -1760,7 +1788,7 @@ void drawHUD()
 
 			drawTextBox(centerX - boxWidth / 2, centerY - 30, boxWidth, boxHeight, 1.0f, 1.0f, 1.0f, 0.6f);
 			render2dText(gameOverText, 1.0f, 0.0f, 0.0f, centerX - GamerOverWidth / 2, centerY + 10);
-			render2dText(resetText, 1.0f, 1.0f, 1.0f, centerX - resetWidth / 2 + 15, centerY - 15);
+			render2dText(resetText, 1.0f, 1.0f, 1.0f, centerX - resetWidth / 2 + 20 , centerY - 15);
 		}
 	}
 
@@ -1787,28 +1815,6 @@ void drawHUD()
 		render2dText(level2Text, 0.8f, 0.8f, 0.8f, centerX - 220 + 130, centerY + 20);
 		render2dText(level3Text, 0.8f, 0.8f, 0.8f, centerX - 160 + 260, centerY + 20);
 		render2dText("R: Restart    Q: Quit    ESC: Resume", 0.8f, 0.8f, 0.8f, centerX - 150, centerY - 10);
-	}
-
-	/*------------------------------------------|| VICTORY SCREEN ||---------------------------------------*/
-	if (gameWon)
-	{
-		std::string winText = "CONGRATULATIONS!";
-		std::string subText = "You completed all levels!";
-		std::string instructionText = "Press R to restart or Q to quit.";
-
-		int winWidth = 400;
-		int boxHeight = 100;
-		int centerX = screenWidth / 2;
-		int centerY = screenHeight / 2;
-
-		// White border outline
-		drawBorderBox(centerX - winWidth / 2, centerY - 22, winWidth, boxHeight, 1.0f, 1.0f, 1.0f, 1.0f, 3.0f);
-
-		// Inner Text box
-		drawTextBox(centerX - winWidth / 2, centerY - 22, winWidth, boxHeight, 1.0f, 1.0f, 1.0f, 0.8f);
-		render2dText(winText, 0.0f, 1.0f, 0.0f, centerX - winText.length() - 80, centerY + 50);
-		render2dText(subText, 1.0f, 1.0f, 1.0f, centerX - subText.length() - 80, centerY + 20);
-		render2dText(instructionText, 1.0f, 1.0f, 1.0f, centerX - instructionText.length() - 90, centerY);
 	}
 
 	/*---------------------------------------|| MAIN MENU ||-------------------------------------------------*/
@@ -1842,29 +1848,65 @@ void drawHUD()
 		render2dText(level3Text, 0.8f, 0.8f, 0.8f, centerX - 160 + 260, centerY + 20);
 		render2dText("R: Restart            Q: Quit Game", 0.8f, 0.8f, 0.8f, centerX - 120, centerY - 10);
 	}
-	
+
+	if (levelComplete && !gameWon)
+	{
+		std::string winText = "Level Complete!";
+		std::string subText = "Press N to continue to the next level.";
+		int winWidth = 500;
+		int boxHeight = 100;
+		int centerX = screenWidth / 2;
+		int centerY = screenHeight / 2;
+
+		// Flashing box effect if desired
+		 float alpha = 0.5f + 0.5f * sin(glutGet(GLUT_ELAPSED_TIME) * 0.005f);
+
+		drawBorderBox(centerX - winWidth / 2, centerY - 22, winWidth, boxHeight, 1.0f, 1.0f, 0.0f, 1.0f, 0.3f);
+		drawTextBox(centerX - winWidth / 2, centerY - 22, winWidth, boxHeight, 0.0f, 0.0f, 0.0f, 8.0f);
+		render2dText(winText, 1.0f, 1.0f, 1.0f, centerX - winText.length() * 10 + 80, centerY + 40);
+		render2dText(subText, 1.0f, 1.0f, 1.0f, centerX - subText.length() * 5 + 40, centerY);
+	} else if (gameWon)
+	{
+		/*------------------------------------------|| VICTORY SCREEN ||---------------------------------------*/
+		std::string winText = "CONGRATULATIONS!";
+		std::string subText = "You completed all levels!";
+		std::string instructionText = "Press R to restart or Q to quit.";
+
+		int winWidth = 400;
+		int boxHeight = 100;
+		int centerX = screenWidth / 2;
+		int centerY = screenHeight / 2;
+
+		// White border outline
+		drawBorderBox(centerX - winWidth / 2, centerY - 22, winWidth, boxHeight, 0.0f, 1.0f, 0.0f, 1.0f, 3.0f);
+
+		// Inner Text box
+		drawTextBox(centerX - winWidth / 2, centerY - 22, winWidth, boxHeight, 1.0f, 1.0f, 1.0f, 0.8f);
+		render2dText(winText, 0.0f, 1.0f, 0.0f, centerX - winText.length() - 80, centerY + 50);
+		render2dText(subText, 1.0f, 1.0f, 1.0f, centerX - subText.length() - 80, centerY + 20);
+		render2dText(instructionText, 1.0f, 1.0f, 1.0f, centerX - instructionText.length() - 90, centerY);
+	}
 
 	if (LowTimeWarning && !gameWon && !isGameOver)
-{
-    std::string warnText = "HURRY UP!";
-    std::string subText = "Only 10 seconds left!";
-    std::string instructionText = "";
+	{
+		std::string warnText = "HURRY UP!";
+		std::string subText = "Only 100 seconds left!";
+		std::string instructionText = "";
 
-    int boxWidth = 350;
-    int boxHeight = 100;
-    int centerX = screenWidth / 2;
-    int centerY = screenHeight - 150;  // Position it higher so it doesn't overlap other UI
+		int boxWidth = 350;
+		int boxHeight = 100;
+		int centerX = screenWidth / 2;
+		int centerY = screenHeight - 150; // Position it higher so it doesn't overlap other UI
 
-    // Red border
-    drawBorderBox(centerX - boxWidth / 2, centerY - 22, boxWidth, boxHeight, 1.0f, 0.0f, 0.0f, 1.0f, flashAlpha);
+		// Red border
+		drawBorderBox(centerX - boxWidth / 2, centerY - 22, boxWidth, boxHeight, 1.0f, 0.0f, 0.0f, 1.0f, flashAlpha);
 
-    // Inner red-transparent box
-    drawTextBox(centerX - boxWidth / 2, centerY - 22, boxWidth, boxHeight, 1.0f, 0.0f, 0.0f, flashAlpha);
+		// Inner red-transparent box
+		drawTextBox(centerX - boxWidth / 2, centerY - 22, boxWidth, boxHeight, 1.0f, 0.0f, 0.0f, flashAlpha);
 
-    render2dText(warnText, 1.0f, 1.0f, 1.0f, centerX - warnText.length() * 5, centerY + 40);
-    render2dText(subText, 1.0f, 1.0f, 1.0f, centerX - subText.length()  - 65, centerY + 15);
-}
-
+		render2dText(warnText, 1.0f, 1.0f, 1.0f, centerX - warnText.length() * 5, centerY + 40);
+		render2dText(subText, 1.0f, 1.0f, 1.0f, centerX - subText.length() - 65, centerY + 15);
+	}
 
 	// Restore OpenGL states
 	glEnable(GL_DEPTH_TEST);

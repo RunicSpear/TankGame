@@ -4,6 +4,7 @@ uniform vec4        Ambient_uniform;
 uniform vec4        Specular_uniform;
 uniform float       SpecularPower_uniform;
 uniform sampler2D   Texture_uniform;
+uniform float       brightness;
 
 varying vec3    ViewDirection;
 varying vec3    LightDirection;
@@ -23,7 +24,9 @@ void main( void )
    vec4  fvTotalDiffuse   = fNDotL *  texture2D(Texture_uniform, texCoord);
    vec4  fvTotalSpecular  = Specular_uniform * ( pow( fRDotV, SpecularPower_uniform ) );
   
-   gl_FragColor = vec4((Ambient_uniform.rgb + fvTotalDiffuse.rgb + fvTotalSpecular.rgb), 1.0);
+   vec3 finalColor = Ambient_uniform.rgb + fvTotalDiffuse.rgb + fvTotalSpecular.rgb;
+   gl_FragColor = vec4(finalColor * brightness, 1.0);
+
 }
 
 
